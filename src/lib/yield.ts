@@ -276,6 +276,14 @@ export interface YieldInput {
   assumptions?: Partial<YieldAssumptions>;
   /** The building type, where a policy permits one the zone does not (the TOD's apartments in R2); the zone's own where unset. */
   archetype?: Archetype;
+  /**
+   * The massing as the envelope itself, one solid volume: the whole of the land inside the setbacks, to the whole of
+   * the height, with no courtyard cut out of it for the ADG's building depth and no tower plate; and the floor area
+   * the ratio allows spread over every storey of it, not filled from the ground up (which stops a storey short and
+   * draws the volume lower than its height). An envelope holds more than its building: the floor area is the
+   * ratio's, and the plan inside the volume, its depth and its apartments' light are the design's.
+   */
+  envelope?: boolean;
 }
 
 export type UnitCount = Record<UnitKind, number> & { total: number };
@@ -574,7 +582,9 @@ export function computeYield(input: YieldInput): YieldResult {
     let plateMask = env, held: Tier['held'];
     // A residential tower is held to its plate size, centred on the envelope by
     // eroding it evenly; apartments elsewhere to the ADG's building depth.
-    if (t.use === 'residential' && t.from >= 9 && envelopeSqm > a.towerPlateMax) {
+    if (input.envelope) {
+      // the envelope itself: one solid volume, nothing held
+    } else if (t.use === 'residential' && t.from >= 9 && envelopeSqm > a.towerPlateMax) {
       let lo = 0, hi = 60;
       for (let it = 0; it < 24; it++) { const mid = (lo + hi) / 2; if (count(cellsWhere(slack, (s) => s >= mid)) * cellA * scale > a.towerPlateMax) lo = mid; else hi = mid; }
       plateMask = cellsWhere(slack, (s) => s >= hi);
@@ -630,10 +640,20 @@ function fill(input: YieldInput, a: YieldAssumptions, arch: Archetype, tiers: Ti
   const cap = input.fsr ? input.fsr * A : Infinity;
   const floors: YieldResult['floors'] = [];
   let capacity = 0, total = 0;
+  // An envelope's floor area is spread over every storey of it, each floor the same share of its plate, so the
+  // volume stands to its height; otherwise the floors fill from the ground up until the ratio is spent.
+  const whole = input.envelope ? tiers.reduce((sum, t) => sum + (t.plateSqm < 1 ? 0 : (t.to - t.from + 1) * t.plateSqm * eff(t.use)), 0) : 0;
+  const share = input.envelope && whole > cap ? cap / whole : 1;
   tiers.forEach((t, tier) => {
     for (let s = t.from; s <= t.to; s++) {
       const full = t.plateSqm * eff(t.use);
       capacity += full;
+      if (input.envelope) {
+        if (t.plateSqm < 1) continue;
+        floors.push({ storey: s, use: t.use, gba: t.plateSqm * share, gfa: full * share, tier });
+        total += full * share;
+        continue;
+      }
       if (total >= cap - 1e-6 || t.plateSqm < 1) continue;
       const take = Math.min(full, cap - total);
       floors.push({ storey: s, use: t.use, gba: t.plateSqm * (take / full), gfa: take, tier });
@@ -667,7 +687,8 @@ function fill(input: YieldInput, a: YieldAssumptions, arch: Archetype, tiers: Ti
   const bicycles = Math.ceil(n * a.bicycles.perDwelling) + Math.ceil(n * a.bicycles.visitorPerDwelling) + Math.ceil(nonRes * a.bicycles.nonResidentialPerSqm);
   const basementLevels = totalCars ? Math.ceil((totalCars * a.basementSqmPerSpace) / (A * a.basementCoverage)) : 0;
 
-  const groundPlate = floors.filter((f) => f.storey === 1).reduce((t, f) => t + f.gba, 0);
+  // (an envelope stands on the whole of its plate, whatever share of it is floor area)
+  const groundPlate = input.envelope ? tiers.filter((t) => t.from === 1).reduce((sum, t) => sum + t.plateSqm, 0) : floors.filter((f) => f.storey === 1).reduce((t, f) => t + f.gba, 0);
   const minDimension = A < 650 ? 0 : A <= 1500 ? 3 : 6;
   return {
     archetype: arch, assumptions: a, siteAreaSqm: A, hobM: input.hobM, fsr: input.fsr,

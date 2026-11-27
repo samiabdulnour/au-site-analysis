@@ -1680,8 +1680,9 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   a bundle with no outlines of what stands keeps the gross building area,
   labelled as that. The height chart's limit reads 9.5 m, not "10 m".
 - *"Always show compliance for current structures on site, after for the
-  designed massings."* What stands today has a compliance sheet of its own,
-  always and first (`Stands today: compliance`: its sun, the shadow it
+  designed massings."* What stands today has compliance pages of its own,
+  always and first (`Stands today: shadow` and `Stands today: solar
+  access`, straight after its spread: its sun, the shadow it
   casts, its separations), whether or not rebuilding it is a path; the
   designed massings' sheets follow. The path that rebuilds what stands is
   the same massing, so it has no second sheet.
@@ -1695,7 +1696,7 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m²
   and 12 m wide, and the study draws that scheme across the whole site,
   every lot of the amalgamation as one (`Low and mid-rise housing`, a path
-  with its own page, controls rows and compliance sheet). The town centre
+  with its own page, controls rows and compliance pages). The town centre
   is the nearest of the Housing SEPP's town-centres map, read to 800 m
   round the site; the distance is the straight line from the site's
   boundary to the centre's mapped edge, where the SEPP's is a walking
@@ -1703,6 +1704,230 @@ yield for 86, 88-90, 94 Maroubra Road, 2026-11):
   some councils' excluded land) is not checked: the page says both, and
   that eligibility is to confirm with a planner. The mid-rise standards of
   R3 and R4 are not read; those zones keep the LEP's own paths.
+- *"The volume is obviously filled and should be higher."* … *"It should
+  be unified, one full volume."* … *"Like this without the hole in the
+  middle."* The low-rise scheme was first drawn as the study's usual
+  building: two storeys in a ring round the whole site with a slot of a
+  courtyard in it, because the study keeps 1.5 m of every height for roof
+  and plant (two floors were all that left under 9.5 m) and holds an
+  apartment building to 18 m of depth. It is now the envelope itself, **one
+  solid volume** (`envelope: true` on `computeYield()`): the whole of the
+  land inside the setbacks, nothing held out of it for a courtyard or a
+  tower's plate, to the whole of its height (`LMR_ROOF_M`, 0.2 m: three
+  floors of 3.1 m and a flat roof with no plant or lift overrun over it,
+  9.5 m; the policy sets a height and not a storey count, councils read it
+  as two to three storeys, and `yield_assumptions.json`'s own
+  `roofAllowance` stands where set). An envelope holds more than its
+  building, so its floor area is the ratio's and not the volume's: the
+  0.8:1 is spread over every storey, each the same share of its plate, and
+  the page says what share of the envelope that is, and that the plan
+  inside it (its depth, its courts, its apartments' sun) is the design's to
+  resolve. At Maroubra: an L of three storeys to 9.5 m, 2,457 m² (0.80:1,
+  67% of the 3,671 m² the envelope would hold), 28 apartments and 36
+  parking spaces. 9.5 m is the policy's limit in R1 and R2: more height is
+  a rezoning's, not this path's. (Between the two it was drawn as three
+  separate buildings on the office's feasible footprints; that reading is
+  gone.)
+- *"Can we place the compliance sheet right after the scenario page?"* …
+  *"Split solar and shadow with setbacks to two different pages."* …
+  *"Make the isometry here for the full half page and remove the plan: the
+  plan is visible in shadow. Shadow will be page two."* Every option's
+  compliance was one sheet, all of them after the last path: two massings
+  105 mm wide over a plan 147 mm high. Each option is now three pages
+  running: its spread, the massing alone over the whole right page; its
+  **shadow** and separation, the plan the whole page; its **solar
+  access**, the two sun-coloured massings one over the other, the width of
+  the page each (`deckOrder()`, `complianceSheets()`, `schemeFigures()` in
+  `src/render/yieldSheet.ts`). The overview's page column follows. Two
+  things the larger plan showed are put right with it: a frontage's street
+  name, written where its road could not carry it, stood 8 to 14 m off the
+  site's edge at the middle of it whatever was there (Glanfield Street, a
+  lane, was written across the houses beyond it and through a storey
+  number) and now stands 4.5 mm of sheet off the edge, along it to where
+  nothing is written; a name along a road is written only where the road
+  runs straight under it. And the overview's lot line, which ran into the
+  controls beside it with three lots written out, gives several as
+  lot/plan (`3 lots: 1/DP965310, 10/DP1118472, 1/DP36591`, `lotsShort()`).
+- *"The shadow should be the same scale as plans. Can you merge shadow and
+  plans, so the shadow looks more like plan? Also keep the rule with full
+  isometry everywhere. If there is nothing interesting for compliance,
+  don't show the shadow or plan at all."* … *"The previous shadow was
+  better. Just update the scale and colours."* … *"I am not convinced by
+  the plan shadow graphics. Can it be the plan like it was before, just
+  with shadows? Try different iterations."* … *"Is it possible to make the
+  surrounding buildings black and white, without zone? Zones are only
+  visible on the second page."* … *"White buildings, hour by hour."* The
+  shadow page's drawing went through four versions on the way (the
+  report's sun page at 1:1 000; the scheme's shadow alone on the path's
+  numbered plan; the sun page in the plans' colours; a board of seven
+  shadow styles and three ways of drawing the neighbours). What was
+  chosen: the path's plan at the overview's scale, the neighbours white in
+  a black line with their street numbers and no zone on them, and every
+  building's shadow hour by hour in soft grey layers, the envelope's own
+  at 9 am, noon and 3 pm outlined. (The ground coloured by its hours of
+  sun, in the solar access diagram's bands, was tried after that: "no,
+  colourful shadows are not ideal".) Every path's spread is the isometric
+  alone, and a path's only plan is its shadow page, so the paths with
+  nothing to test have no plan and no shadow page.
+- *"These two are not matching by style or colour. Let's keep the aerial
+  map there, but simplify the zoning. For the isometry in the yield
+  probably don't show the zoning in 3D, just white neighbour buildings."*
+  The overview's plan tinted every lot by its zone over the photograph and
+  wrote the zone and height on each, and the page after it drew the town
+  in the zones' reds and blues. Now the photograph is the first page: a
+  zone is an area inside one line of its colour, its code and height of
+  building written once on it, and each lot keeps its street number alone
+  (`YIELD_OVERVIEW_ZONES` draws the alternatives: a light tint in the
+  line, the tint alone, or each lot tinted as before; Heron keeps its
+  hatches). And every massing of the deck is a white model, a path's own
+  spread as the solar access views already were: the neighbours white at
+  their heights, the scheme and what stands the only colours. The zones
+  are the overview's alone.
+- *"Our site, very thick black. The yellows should be the same
+  everywhere."* The site's boundary is one solid black line on every
+  drawing of the deck, 1.4 mm on a plan and 1 mm on the ground of a
+  massing (`SITE_LINE`; over the first page's photograph it stands on a
+  white casing). It was the accent's, fine and dashed, with a tint of it
+  on the ground. And the scheme is one yellow wherever it is drawn: the
+  plan's plate is solid (it stood at 55%, paler than the isometric beside
+  it), the massing's roof is the colour itself and not lit (`roofFill`),
+  the height plane over it has no tint to shift it, and what stands on the
+  site takes the same yellow (Canary gave it the deeper of its two).
+- *"Do the compliance sheets for every scenario produced … even for
+  this"* (the path that rebuilds what stands). Every path with a spread
+  has its compliance pages after it: the rebuilt path, which had none
+  because its massing is what stands, and a scheme with no apartments,
+  which has its shadow page alone with the yield's criterion on it.
+- *"The building separation needs to be visible in the drawing. Don't
+  put it into text. The shadow of our design should have a different
+  colour than the others."* The separations had gone into a table beside
+  the plan when the chosen shadow style left the dimension lines off.
+  Each is on the plan again, a dimension from the scheme to the building
+  near it with what is asked of it (`5.9 / 12 m`), heavier and larger than
+  before, and the table is gone. And the scheme's own shadow is the
+  style's accent over the neighbours' grey, where the two were one grey.
+- *"Don't do white outlines on texts. Not sure with the red shadow or
+  yellow. There is some issue with layers on the solar analysis."* …
+  *"Try different colours for shadows in plan, context shadow and your
+  shadows."* … *"The yellow there is too warm, choose a different yellow
+  from the Canary palette."*
+  - No word on a plan has a white outline round it: a dimension, a
+    shadow's hour, a lot's number and a zone's name are written in their
+    ink alone.
+  - The scheme's shadow on the plan is the style's blue over the
+    neighbours' grey (`ownShadowOnPlan()`), chosen from a board of eight
+    pairs: on the accent's red the separations' red figures were lost.
+    `YIELD_SHADOW_LOOK` draws any other pair (`nInk`, `nAlpha`, `own`,
+    `oAlpha`).
+  - Canary's scheme and what stands are the lemon of its zoning palette
+    (`CANARY_SCHEME_YELLOW`, the ePlanning yellow) where they were the
+    golden yellow of its ink family; `YIELD_SCHEME_FILL` draws another.
+  - The layers of a massing (`src/render/axonometric.ts`): what is built
+    on the site was one item at the site's middle, its buildings in the
+    order they were given, and the firmer outline a scene asks round it
+    was drawn over the whole drawing at the end. Each building is now
+    sorted among the neighbours on its own (the prisms that stand on one
+    another together), and its outline is drawn with it, so a building in
+    front covers it. At Maroubra the outline of a wall hidden behind No.
+    84's roof stood on that roof: a white box on the scheme that was not
+    there.
+- *"One more try. Use colours for zoning for plan and isometry, but only
+  on outlines. Don't make very colourful fills or shades."* The neighbours
+  had gone black and white, the zones on the overview alone. They are
+  white still, their walls in the model's greys, and each is outlined in
+  its zone's colour, on a path's plan and in every massing (`zoneLine()`:
+  in Canary the zone's mapped ePlanning colour a step darker, so R2's pink
+  and R3's salmon stay two lines; the massing's bold cut made them one
+  red, lost against the separations' red figures). The keys name the
+  zones by their lines. Heron has none. `YIELD_ZONE_EDGES=0` draws the
+  plain outlines, `YIELD_ZONE_LINE=vivid` the bold colours.
+- *"Can you try to make the shadow on the shadow plan look like this in
+  Canary style?"* (a contour plot in reds, oranges and pinks, and a
+  shadow-range diagram with each hour's shadow in its own colour). In
+  Canary the envelope's own shadow is now contours (`shadeLevels()` in
+  `src/lib/solarAccess.ts`): seven bands, the ground in its shadow one hour
+  (palest) to all seven (deepest), each a gradient across the day from the
+  residential zones' pinks on the morning side to the C zones' oranges on
+  the afternoon side (`CANARY_SHADOW_RAMPS`), 9 am, 12 pm and 3 pm named at
+  its far end. The neighbours' shadows stay grey, hour by hour; the other
+  styles keep the envelope's hours laid over each other in their blue.
+  `YIELD_SHADOW_LOOK` draws the alternatives: `"ramp": "warm"` (cream to
+  red, which runs into the scheme's yellow), and `"ownStyle": "sweep"`,
+  each hour's shadow in its own colour, outlined and named (`"ramp":
+  "pink-lilac"` or `"yellow-red"`).
+- *"Don't do yellow buildings anywhere."* … *"Colour should have only
+  what we really care about in a drawing; the rest can be black and white
+  in the yield, or have colourful outlines, but not fills."* What is built
+  on the site, a scheme and what stands, is white in a black line in every
+  style and on every drawing (`BUILT_FILL`, `BUILT_LINE`): the homes white,
+  shops and offices a light and a mid grey; it was Canary's yellow,
+  Flamingo's salmon, Kingfisher's pale blue. In a massing it has a heavy
+  black outline (`silhouette`, always on in the yield), so it stands out
+  in the white town. The tiers' envelopes and badges are grey, and no key
+  fills a swatch with a colour. What keeps a coloured fill is what the
+  drawing is about: the scheme's shadow on the shadow page and the
+  facades' sun on the solar access page. Outlines keep theirs: the zones,
+  the separations, the height plane. `YIELD_SCHEME_FILL` draws the homes
+  in a colour again, to compare.
+- *"Try colourful shadow with neighbour buildings too."* … *"Make the
+  dims there black."* `YIELD_SHADOW_LOOK` can draw the neighbours'
+  shadows as contours too: of their own under the envelope's (`"ground":
+  "contours"`, in Canary's blues, `"gRamp": "blue"`), or every building's
+  together as one set of contours in
+  the envelope's pink to orange, its own reach outlined (`"ground":
+  "all"`). By default they stay grey, hour by hour: the colour is the
+  envelope's. The separations on the plan are black (`DIM_INK`), dashed
+  where only a blank face holds; the criteria table marks each.
+- *"Try to make a colourful volume shadow here, don't use grey."* On a
+  path's own spread the white model's walls are shaded toward a colour,
+  not toward black (`shadeInk` on a prism in `src/render/axonometric.ts`):
+  a wall full to the light stays white, one turned from it takes the ink,
+  its hatch and storey lines a deeper cut of it. Each neighbour's ink is
+  its zone's colour lightened, what is built Canary's light blue
+  (`isoShadeOf()`). The solar access views keep the neighbours neutral:
+  their colour is the facades' sun. `YIELD_ISO_SHADE` draws the others:
+  `blue` (every wall the light blue), `warm` (the shadow plan's peach),
+  `grey` (as it was).
+- *"Is this in the Canary palette?"* … *"Swap for Canary, please."* The
+  colours were steps between Canary's: zone outlines a shade darker than
+  the mapped colour, walls a shade lighter, seven contour bands with five
+  in between. They are now exact swatches: a neighbour's outline and its
+  shaded walls its zone's mapped ePlanning colour (R2 `#ffa6a3`, R3
+  `#ff776e`, E2 `#b4c6e7`; the lines a little wider to carry the lighter
+  ones), what is built shaded in Canary's mid blue (`#b4c6e7`), and the
+  contours four bands of two hours (`CONTOUR_HOURS`: one or two, three or
+  four, five or six, all seven), the residential pinks R5, R2, R3, R4 on
+  the morning side and the C zones' oranges C4, C3, C2, C1 on the
+  afternoon side (`CANARY_SHADOW_RAMPS`), the hours named in Canary's text
+  inks. The sweeps run through swatches too (`CANARY_SWEEPS`).
+- *"This colouring, this shading style would be better for Kingfisher;
+  Canary has different colours … more colour, like this"* (with Canary's
+  solar view). Each style now has its own zone tone (`zoneTone()`):
+  Kingfisher takes the mapped ePlanning colours as they are, the soft
+  look the Canary isometric had (R2 `#ffa6a3`, E2 `#b4c6e7`), on its zone
+  lines, plans and walls, its built walls the light blue; its own olive
+  and magenta lines are gone. Canary takes the same hues at the
+  saturation of its sun colours (`vividZone()`: R2 `#ff6d68`, R3
+  `#ff473b`, E2 `#6a9cf7`; lighter zones stay lighter), on every line of
+  the deck and the massing's walls, its built walls its sky blue
+  (`#7fa8ff`). `YIELD_CANARY_ZONES=pastel` draws Canary as it was a round
+  ago, `grey` with grey walls.
+- *"Dims are not very beautiful, change that."* They were a heavy line
+  with square ticks and the whole `13.1 / 12 m` in bold, across whatever
+  it met, the site's thick line among it. Now drawn as an architect
+  dimensions a plan: a fine line run past its ends, oblique ticks, the
+  distance over it in plain figures and `min 12 m` small and grey under
+  it, the words where they cross the least and kept off the site's line.
+  A separation running on through a nearer, dimensioned building is left
+  off where it holds (a house next door and the one beyond it).
+- *"If there is nothing, don't print it."* "Within the controls" had a
+  spread of its own even in a zone the study draws no building type for:
+  every figure a dash, over the height plane alone. A path that builds
+  nothing now has no spread (`drawnPath()`); it keeps its row in the
+  overview's table, with no page, and the overview says why. At Maroubra
+  the deck runs from what stands and its rebuilding straight to the low
+  and mid-rise scheme; a site with no path at all is its overview and its
+  controls.
 
 `--type yield` draws PLANNING YIELD: what the controls let the site hold, as a
 feasibility study first states it, laid out as the site report is — A3
@@ -1719,13 +1944,15 @@ site may take, so a site with more paths has more pages:
    each one's storeys, height, floor area, FSR, units, parking, compliance and
    the page it is drawn on, and the floor area and height of each as bars
    against the FSR's floor area and the height of building. The right page is
-   the site among its neighbours in plan, each numbered neighbour's street
-   number, zone and height written in its building.
+   the site among its neighbours in plan over the aerial photograph: each
+   zone an area in one line of its colour with its code and height of
+   building written once, each numbered neighbour's street number on its
+   lot. It is the one page that shows the zones.
 2. **Stands today**, where the building sources record a building on the site
    — its storeys, height, footprint and indicative gross building area (each
    footprint by its storeys), the ratio that makes on the site against the
    LEP's, and the same bars. The right page draws it at its recorded height
-   among the neighbours, over its plan. Where the sources have the footprint
+   among the neighbours, a white model, the whole page. Where the sources have the footprint
    but no height, the height is read from Google's 3D meshes and the storeys
    are that height at 3.1 m each, or at the study's 3.8 m office floor where
    the source calls the building an office, a shop or another workplace
@@ -1752,7 +1979,9 @@ site may take, so a site with more paths has more pages:
    the schedule of tiers — storeys, use, setbacks, plate and floor area, each
    tier's number in the ring the plan draws it in — and the apartments, a row
    for each kind in the mix with its share, ADG 4D-1's least area for it, its
-   own area, how many there are and the area they take.
+   own area, how many there are and the area they take. Not drawn where
+   the zone takes no building type the study draws (a low density zone):
+   there is nothing to show, and the overview says so.
 5. **Reshaped to comply** — the envelope within the controls laid out again
    in the office's feasible footprints so that it meets the ADG's sun
    (`src/lib/reshape.ts`, tested in `test/reshape.mts`):
@@ -1775,7 +2004,7 @@ site may take, so a site with more paths has more pages:
      quarter hours). The first that meets 4A-1 and 4A-2 is the scheme; where
      none does, the nearest, and it says so.
    - **Its pages:** its own spread (the schedule names each building's plan)
-     and its own compliance sheet; the floor area it gives up against the
+     and its own compliance pages; the floor area it gives up against the
      envelope is the floor area the sun costs.
 6. **TOD controls** — where the site is in a TOD area of the Housing SEPP
    (chapter 5, part 2, `src/lib/tod.ts`, tested in `test/tod.mts`):
@@ -1786,7 +2015,7 @@ site may take, so a site with more paths has more pages:
    - **What it asks:** a lot at least 21 m wide at the street, and 2% of the
      floor area as affordable housing in perpetuity where the scheme is
      2,000 m² or more.
-   - **Its pages:** its own spread and compliance sheet, drawn only where it
+   - **Its pages:** its own spread and compliance pages, drawn only where it
      lifts the LEP's height or ratio on a lot wide enough.
    - **Where a council's alternative replaced it:** Ku-ring-gai's for
      Gordon, Killara, Lindfield and Roseville, in its LEP from
@@ -1810,39 +2039,71 @@ site may take, so a site with more paths has more pages:
    the FSR set aside, the case a clause 4.6 variation or a planning proposal
    has to carry, marked non-compliant; drawn only where the FSR stops the
    scheme below the height.
-9. **Compliance**, a sheet for each option that holds apartments, after the
-   yield's own spreads: does its envelope comply? On the left the
-   assessment criteria in their order, a mark each: overshadow impact
-   (3B-2), solar access (4A-1 with the hours, again built out, and 4A-2 with
-   none), building separation (3F-1) and yield (its floor area against the
-   most the controls allow it); the sun on each facade and the roof, by the
-   way each looks, its area, its average hours and the share with the hours
-   asked, today and built out; each building near and its separation, today
-   and built out. On the first sheet each criterion says in full what it
-   asks, in a line of small print under its own row (the ADG clause and its
-   wording, how the yield's most is worked out, what "built out" means).
-   That wording was a table of its own under the others ("Assessment
-   criteria"), 77 mm of it where 24 mm were free, and it ran into the
-   page's key; under the rows it adds about 20 mm and the tables stay clear
-   of the key. On the right the massing twice, side by side and close on the
-   building, from the street corner and from the opposite one, so every face
-   is seen, the town round it a white model (neighbours, futures, trees,
-   traffic and ground in white and greys) so only the scheme's colours read:
-   each facade cell (a storey high, about 3 m wide) and each roof
-   cell (about 3 m square, on what the tiers above leave open) in its band of
-   hours, blues under two, the lorikeet's green, yellow, orange and red from two; under
-   them the plan as the report's sun page draws it, in Arial: no zone tints,
-   every building white with its storeys (grey where no height is recorded and
-   two are assumed), the future footprints dashed with theirs, and every
-   neighbour's shadow, in grey, each hour from 9 am to 3 pm laid one translucent layer
-   over the last, and the envelope's own over them in the site's accent, at
-   9 am, noon and 3 pm outlined; hatched, the ground only the envelope shades
-   at one hour or more, where no building standing shades it that hour
-   (`addedGround()` in `src/lib/solarAccess.ts`: what it would overshadow);
-   the land it shades outlined and each separation drawn as a dimension (green clear,
-   amber where it holds only habitable to non-habitable, red short), its
-   distance written along its line and just off it, read from the sheet's
-   foot or its right.
+9. **Compliance**, for every option with a spread, straight after that
+   spread: does its envelope comply? Two pages where the option holds
+   apartments, the shadow's alone where it holds none (an office scheme,
+   with the yield's criterion on it). The path that rebuilds what stands
+   has its pages too, though its massing is what stands. What each
+   criterion asks is written in full, in a line of small print under its
+   own row, on the first option's pages (the ADG clause and its wording, how
+   the yield's most is worked out, what "built out" means).
+   - **Shadow** (`…_shadow_and_separation`), the page after the option's
+     spread, and its plan. On the left overshadow impact (3B-2) and building
+     separation (3F-1), a mark each, and the shadow it adds, by the land it
+     falls on (residential lots, heritage items, parks and reserves: how
+     many lie in its reach, how many it shades, the most it adds and when,
+     and the lots it takes below the hours a DCP commonly asks of half their
+     open ground). On the right, the whole page, the option's plan at the
+     overview's scale (`PLAN_ROOM`), its neighbours in black and white: the
+     lots untinted, every building white in a line of its zone's colour
+     (black where its lot has none; no zone's fill anywhere), with its
+     street number, the kerbs,
+     the future footprints dashed, each tier of the scheme in its use's
+     colour with its envelope dashed and its number as in the schedule
+     (what stands, as its own spread draws it). Under the buildings, the
+     neighbours' shadows each hour from 9 am to 3 pm, one soft grey layer
+     over the last, so the ground darkens with the hours it is in shade,
+     and the scheme's own over them in a colour of its own, the style's
+     blue (Heron: its accent), at 9 am, noon and 3 pm outlined and named. Each separation is
+     a dimension on the plan, from the scheme to the building near it, drawn
+     as an architect dimensions a plan: a fine black line run a little past
+     its ends, oblique ticks, the distance in plain figures over it (`5.9 m`)
+     and what is asked small and grey under it (`min 12 m`); dashed where it
+     holds only with one face blank. The words go where they cross the least:
+     the site's thick line (with a margin), the scheme's and the standing
+     buildings' outlines, the other dimensions, then the neighbours'
+     outlines; the middle first, past an end (its line run on under them)
+     when the middle is taken. A separation that runs on through a nearer
+     building, itself dimensioned, is left off where it holds. There is no
+     table of them. `YIELD_SHADOW_LOOK` (JSON, read when the page is
+     drawn) overrides any part of that look, for further iterations: which
+     hours, whose shadows, the hatch on what the envelope adds
+     (`addedGround()`), the dimensions, the neighbours black or grey.
+   - **Solar access** (`…_solar_access`), the page after that. On the left
+     solar access (4A-1 with the hours, again built out, and 4A-2 with
+     none) and yield (its floor area against the most the controls allow
+     it); the sun on each facade, by the way each looks, its
+     area, its average hours and the share with the hours asked, today and
+     built out; and the apartments storey by storey, how many have the
+     hours and how many no sun (in bands of storeys over eight). On the
+     right the massing twice, the width of the page each and close on the
+     building, from the street corner over the same from the opposite one,
+     so every face is seen, the town round it a white model (neighbours,
+     futures, trees, traffic and ground in white and greys) so only the
+     scheme's colours read: each facade cell (a storey high, about 3 m
+     wide) in its band of hours, blues under two, the lorikeet's green,
+     yellow, orange and red from two. The roofs are not counted and are
+     drawn white (an apartment's sun is on its facade; Z. 2026-11, "the
+     roof shouldn't be counted, coloured like that: we care only for
+     facades", then "make the roof white").
+
+   Every path's own spread draws its massing alone, the whole right page
+   and framed close (14 m of town round the site): its plan is the shadow's,
+   the page after. A path with no massing to test (what stands with no
+   outline) has that one spread and no plan or shadow page. It
+   was one sheet an option, every option's after the last path, the two
+   massings side by side over a plan of its own, and each path's spread its
+   massing over a second plan: see Z.'s notes below.
 10. **Controls and assumptions** — the assumptions the study rests on (floor
    to floor, efficiencies, the mix, the plates, the parking rates, the nearest
    station) on the left; on the right, the full table the office's
@@ -1885,7 +2146,7 @@ where the joined lots use the land better, the lots nearest the site first.
 A lot still too small, or one the capacity study holds (a strata scheme, a
 heritage item, a mature or a small site), stands as it is. The neighbours on
 a lot that redevelops stand today and give way to it built out: the
-compliance sheet tests the sun and the separations against both. A height
+compliance pages test the sun and the separations against both. A height
 mapped as an RL is not read for a lot (its ground is not known), and the
 bundle carries each lot's zone, height and ratio (a bundle from before the
 lots' ratios reads a building's on the lot). The proposal's
@@ -2023,14 +2284,15 @@ local metres:
   with the neighbours built to their futures, where any rises. The hours are
   counted in all, as the ADG's criteria read; `"sun": { "continuous": true }`
   counts the longest unbroken run instead, for a council that reads them so,
-  and the pages say which. The compliance spread's massing colours each
+  and the pages say which. The solar access page's massing colours each
   apartment's facade yellow where it has the hours.
 - **Sun on each facade and roof.** `facadeSun()` in `src/lib/solarAccess.ts`
   gives every face of a scheme its hours, storey by storey in cells about
-  3 m wide, read 1 m above each floor, and `roofSun()` every roof, the plate
-  each tier's roof is less the tiers above it, in cells about 3 m square
-  (clipped by `polyclip-ts`), both today and built out; the compliance
-  sheets colour the massing's cells by their band of hours
+  3 m wide, read 1 m above each floor, both today and built out (and
+  `roofSun()` every roof, the plate each tier's roof is less the tiers above
+  it, in cells about 3 m square, clipped by `polyclip-ts`: the yield no
+  longer reads it); the compliance sheets colour the massing's facade cells
+  by their band of hours
   (`sunBands()` in `src/render/facadeElevation.ts`: seven bands, loriini's,
   none, under 1, 1–2, 2–3, 3–4, 4–5 and 5 hours and over, after the rainbow
   lorikeet: three blues short of two hours, a green where a face just makes

@@ -17,11 +17,11 @@
 // beside the output.
 
 import { esc } from './chrome.js';
-import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, type DeckLook } from './template.js';
+import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, mix, CANARY_INK, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { atlasPage, coverPage, bookletCover, coverSite, coverCredit, type Cover, type DeckHtml, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
 import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
-import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, type Fill } from './atlasKit.js';
+import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, heightBandOf, HEIGHT_BANDS, paletteRamp, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
 import { zoneFill, zoneOrder } from './lepPalette.js';
 import { LEP_OPACITY } from './sheet.js';
@@ -43,12 +43,12 @@ import {
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 import { shadowHull } from '../lib/shadows.js';
-import { addedGround, apartmentSun, addedShadow, adgSunHours, schemeBlocks, groundShadow, facadeSun, roofSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type RoofCell, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
+import { addedGround, shadeLevels, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 import { separations, type SeparationRow, type SeparationReading } from '../lib/separation.js';
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
 import { readTod, todSentence, TOD_SEPP, type TodReading } from '../lib/tod.js';
-import { readLmr, lmrApplies, lmrSentence, LMR_LOW_RISE, type LmrReading } from '../lib/lmr.js';
+import { readLmr, lmrApplies, lmrSentence, LMR_LOW_RISE, LMR_ROOF_M, type LmrReading } from '../lib/lmr.js';
 import { bandOf, compass, sunBands } from './facadeElevation.js';
 
 export interface YieldBundle extends SummaryData {
@@ -264,10 +264,17 @@ export function yieldStudy(b: YieldBundle): YieldStudy {
     : undefined;
   // the low and mid-rise housing controls, and the scheme they allow on the whole site where they give one the LEP does not
   const lmr = readLmr({ centre: b.lmrCentre, zone: c.zoneCode, lepHobM: hob?.metres, lepFsr: c.fsr, lotSqm: area || undefined, lotWidthM: frontageLengths[0]?.lengthM });
-  const lmrRaw = lmrApplies(lmr) && !todY
-    ? computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions, archetype: 'residential' })
-    : undefined;
-  const lmrY = lmrRaw && lmrRaw.storeys > 0 ? lmrRaw : undefined;
+  // A low-rise building uses the whole of its height: three floors under the 9.5 m, a flat roof and no plant over
+  // it (LMR_ROOF_M, unless yield_assumptions.json sets the roof). And it is drawn as its envelope, one solid volume:
+  // the whole of the land inside the setbacks to that height, the ratio's floor area spread through it. It was a
+  // ring of two storeys round a slot of a courtyard, then three separate buildings; Z. asked for neither: "it
+  // should be unified one full volume", "like this without the hole in the middle" (2026-11).
+  let lmrY: YieldResult | undefined;
+  if (lmrApplies(lmr) && !todY) {
+    const lowRise = { ...assumptions, roofAllowance: b.assumptions?.roofAllowance ?? LMR_ROOF_M };
+    const volume = computeYield({ ring, fronts, siteAreaSqm: area, zone: c.zoneCode, hobM: lmr.hobM, fsr: lmr.fsr, assumptions: lowRise, archetype: 'residential', envelope: true });
+    lmrY = volume.storeys > 0 ? volume : undefined;
+  }
   return { base, bonus, max, retained, standing: kept && kept.storeys > 0 ? kept : undefined, reshaped, lmr, lmrY, tod, todY: todY && todY.storeys > 0 ? todY : undefined, ring, fronts, toLocal, hob, parkingSet, frontageLengths, future, noScheme };
 }
 
@@ -360,9 +367,11 @@ export interface PathSun {
   separation: (SeparationRow & { name: string })[];
   /** And each building of the future context near it: can the neighbours still develop beside it? */
   separationBuiltOut: (SeparationRow & { name: string })[];
-  /** Each face's hours of sun, cell by cell, and each roof's (lib/solarAccess.ts facadeSun, roofSun). */
+  /**
+   * Each face's hours of sun, cell by cell (lib/solarAccess.ts facadeSun). The roofs are not read: an apartment's sun
+   * is on its facade (Z. 2026-11: "the roof shouldn't be counted, coloured like that: we care only for facades").
+   */
   facades: FacadeFace[];
-  roofs: RoofCell[];
 }
 
 /** The study's result behind a path, where the path has a scheme. */
@@ -436,10 +445,9 @@ export function pathSun(b: YieldBundle, s: YieldStudy, id: Scenario['id']): Path
   const separation = separations(tiers, near, s.ring, s.fronts).map((r) => ({ ...r, name: near[r.index].name }));
   // the sun on each face, cell by cell, today and built out
   const facades = facadeSun(y, { context, future: s.future.buildings.length ? future : undefined, lat, lon, boundary: s.ring, blank: edgeKinds(s.ring, s.fronts).map((k) => k !== 'front') });
-  const roofs = roofSun(y, { context, future: s.future.buildings.length ? future : undefined, lat, lon });
   const builtOut = separations(tiers, s.future.buildings.map((fb) => ({ rings: [fb.ring], storeys: fb.storeys })), s.ring, s.fronts)
     .map((r) => ({ ...r, name: `${s.future.buildings[r.index].name} · ${FOOTPRINTS[s.future.buildings[r.index].type].label}, ${s.future.buildings[r.index].storeys} st` }));
-  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades, roofs };
+  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades };
   done.set(id, out);
   return out;
 }
@@ -666,16 +674,20 @@ const USE_FILL: Record<Use, string> = { residential: '#f0c9a6', retail: '#e69ea1
 const USE_CATEGORY: Record<Use, string> = { residential: 'r4', retail: 'retail', commercial: 'commercial' };
 /** The zone whose ePlanning colour a shop's or an office's floors take where the style keeps those colours (Canary). */
 const USE_ZONE: Record<'retail' | 'commercial', string> = { retail: 'E1', commercial: 'E2' };
+/**
+ * What is built on the site, in every style: the homes white, the shops and the offices a light and a mid grey, in a
+ * black line (Z. 2026-11: "don't do yellow buildings anywhere"; "colour should have only what we really care about in
+ * a drawing, the rest can be black and white in the yield … or have colourful outlines, but not fills"). It was each
+ * style's colour: Canary's yellow, Flamingo's salmon, Kingfisher's pale blue. YIELD_SCHEME_FILL draws the homes in
+ * another colour, to compare.
+ */
 function useFill(u: Use): string {
-  // Heron's line model: the homes white, the shops and the offices a light grey, the outline telling the rest
-  if (deckLook().id === 'heron') return { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' }[u];
-  // Canary, whose neighbours stand in their zones' ePlanning colours at full strength: the scheme as saturated as
-  // they are and a colour none of them takes, Canary's yellow (a zone's red would lose it among its own neighbours);
-  // its shops' and offices' floors in their zones' colours at the same strength
-  if (deckLook().zones === 'lep') return u === 'residential' ? INK.orange.solid : vivid(zoneFill(USE_ZONE[u]), 0.45, 0.5);
-  const c = deckLook().categories.find((x) => x.id === USE_CATEGORY[u]);
-  return c ? tint(c.fill, Math.min(1, c.opacity + 0.35)) : USE_FILL[u];
+  if (u === 'residential' && process.env.YIELD_SCHEME_FILL) return process.env.YIELD_SCHEME_FILL;
+  return BUILT_FILL[u];
 }
+const BUILT_FILL: Record<Use, string> = { residential: '#ffffff', retail: '#e4e4e4', commercial: '#d2d2d2' };
+/** What is built on the site drawn in its line: on a plan, in a massing (drawing units), and in a key. */
+const BUILT_LINE = { ink: '#000000', plan: 0.5, massing: 0.3, key: 0.35 };
 /**
  * The yield's quieter inks, from the palette rather than greys: the neighbours in the transit family's tint, their
  * futures a lighter glass of it, what stands on the site in the activity family's, the envelopes and kerbs in the
@@ -684,13 +696,18 @@ function useFill(u: Use): string {
 function yieldInks() {
   const B = INK.blue, O = INK.orange;
   // Heron's line model: what stands on the site a light grey in its heavy outline
-  // (Canary, whose neighbours are at full strength: what stands on the site at full strength too, the deeper of its
-  // yellows, so it is told from a scheme drawn beside it in the bright one)
-  const standing = deckLook().id === 'heron' ? '#ececec' : deckLook().zones === 'lep' ? O.line : tint(O.deep, 0.42);
-  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: inkFor(B.deep, 0.25), kerb: inkFor(B.solid, 0.4) };
+  // (what stands on the site as what is built is: white in its black line; Heron, a light grey in its heavy outline)
+  const standing = deckLook().id === 'heron' ? '#ececec' : BUILT_FILL.residential;
+  return { context: tint(B.solid, 0.5), contextEdge: inkFor(B.solid, 0.42), future: B.light, futureEdge: B.line, standing, envelope: ENVELOPE, kerb: inkFor(B.solid, 0.4) };
 }
-/** The site's pen: the style's accent. */
+/** The accent's pen: the height plane over the site, the hatch of a study plan. (The site's own boundary is SITE_LINE.) */
 const siteInk = () => deckLook().accent;
+/**
+ * The site's boundary on every drawing of the deck: one very thick black line, on a plan and on the ground of a
+ * massing, millimetres (Z. 2026-11: "our site, very thick black"). It was the accent's, dashed and fine, with a tint
+ * of it on the ground. Over the first page's photograph it stands on a white casing, to read on the dark of a roof.
+ */
+const SITE_LINE = { ink: '#000000', plan: 1.4, massing: 1.0, casing: 0.5 };
 /** A neighbour's colour in the massing: its zone's, bold, as the plan tints its lot — the ePlanning colour where the style keeps it, the category's elsewhere. */
 function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   // Heron's line model: every neighbour a white volume
@@ -711,6 +728,99 @@ const treesNote = (b: YieldBundle) => (b.trees?.length
 /** The photograph under the plan and the massing: where the style draws on the aerial and the deck read one over this site. */
 const photoOf = (b: YieldBundle): (AerialResult & { extent: Extent }) | null =>
   b.aerial?.tiles.length && b.aerial.extent ? (b.aerial as AerialResult & { extent: Extent }) : null;
+/**
+ * A zone's colour as a line: its bold colour, darkened where it is too light to carry a line on white (a yellow, a
+ * pale green). The zones are shown by outlines alone, on white buildings: Z. 2026-11, after the neighbours went
+ * black and white, "use colours for zoning for plan and isometry, but only on outlines; don't make very colourful
+ * fills or shades". Heron, black and white and one colour, has none. YIELD_ZONE_EDGES=0 draws the plain outlines.
+ */
+/**
+ * How a style colours its zones' lines and the massing's walls (Z. 2026-11, on Canary's isometric in the mapped pinks
+ * and blue: "this colouring, this shading style would be better for Kingfisher; Canary has different colours … more
+ * colour, like this", with Canary's solar view, its walls in the sun's greens, lemons, oranges and blues):
+ * - `pastel` (Kingfisher): the zone's ePlanning colour as mapped, a soft pink, salmon or blue, the line and the walls
+ *   turned from the light; what is built a light blue.
+ * - `bands` (Canary): the colours of the report's isometric (its built form page): each neighbour in the colour of
+ *   its storeys, blue for one or two, green for three or four, yellow, red (massingInks().bands), on its outline and
+ *   its shaded walls, on the plans too; what is built shaded in the site's colour, as that page draws what stands on
+ *   the site. Its zones keep their mapped ePlanning colours where they are drawn as areas (the first page).
+ *   (Z. 2026-11: "the colours for Canary are still off, please use the same colours you use for the isometry in the
+ *   report".)
+ * - `vivid` (YIELD_CANARY_ZONES=vivid): the zone's hue at the saturation of Canary's sun colours, what is built sky blue.
+ * - `grey`: the zone's colour as mapped on the lines, the walls grey (YIELD_CANARY_ZONES=grey).
+ */
+type ZoneTone = 'pastel' | 'vivid' | 'grey' | 'bands';
+function zoneTone(look: DeckLook): ZoneTone | null {
+  if (look.id === 'kingfisher') return 'pastel';
+  if (look.zones === 'lep') { const t = process.env.YIELD_CANARY_ZONES as ZoneTone | undefined; return t === 'pastel' || t === 'grey' || t === 'vivid' ? t : 'bands'; }
+  return null;
+}
+/** A colour as a line on white: itself, a step deeper where it is too light to carry one (the report's yellow). */
+const lineOf = (c: string) => inkFor(c, 0.62);
+/** The colour of a building's storeys in the report's isometric (massingInks().bands); null where no height is recorded. */
+function bandInk(cb: { heightM?: number; known?: boolean } | undefined): string | null {
+  return cb && cb.known && cb.heightM && cb.heightM > 0 ? massingInks().bands[heightBandOf(cb.heightM)] : null;
+}
+/**
+ * A neighbour in a white model and on a plan: the line round it and the ink its walls are shaded toward. Its zone's
+ * colour, or (Canary) the colour of its storeys as the report's isometric draws it.
+ */
+function neighbourTone(cb: { heightM?: number; known?: boolean; controls?: { zone?: string } } | undefined, zone: string | undefined, look: DeckLook): { line: string | null; shade: string | null } {
+  if (zoneTone(look) === 'bands') { const c = bandInk(cb); return { line: c ? lineOf(c) : null, shade: isoShadeMode() === 'grey' ? null : c }; }
+  return { line: zoneLine(zone, look), shade: isoShadeOf(zone, look) };
+}
+/** The site's colour as the report's isometric draws what stands on it: at full strength in Canary. */
+const siteShade = () => vivid(tpl().site, 0.6, 0.5);
+/** A zone's mapped colour at the saturation of Canary's sun colours: its hue kept, saturated, its lightness down a step in proportion (R2's pink stays lighter than R3's salmon). */
+function vividZone(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  let h = 0;
+  if (d > 1e-6) h = (max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4) / 6;
+  const L = l * VIVID_ZONE.light, S = d > 1e-6 ? Math.max(VIVID_ZONE.sat, d / (1 - Math.abs(2 * l - 1))) : 0;
+  const q = L < 0.5 ? L * (1 + S) : L + S - L * S, p2 = 2 * L - q;
+  const ch = (t: number) => { t = (t + 1) % 1; const v = t < 1 / 6 ? p2 + (q - p2) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p2 + (q - p2) * (2 / 3 - t) * 6 : p2; return Math.round(v * 255).toString(16).padStart(2, '0'); };
+  return `#${ch(h + 1 / 3)}${ch(h)}${ch(h - 1 / 3)}`;
+}
+const VIVID_ZONE = { sat: 0.9, light: 0.86 };
+function zoneLine(zone: string | undefined, look: DeckLook): string | null {
+  if (look.id === 'heron' || !zone) return null;
+  const tone = zoneTone(look);
+  if (tone === 'vivid' && process.env.YIELD_ZONE_LINE !== 'vivid') return vividZone(zoneFill(zone));
+  if ((tone === 'pastel' || tone === 'bands') && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
+  // Where the style keeps the ePlanning colours (Canary): the zone's mapped colour itself, a swatch of its palette.
+  // The massing's bold cut of it (zoneInk) brings R2's pink and R3's salmon to one red, which as
+  // a fill passed and as a line is the same line; and a town outlined in that red is lost against the separations'
+  // red figures and the height plane's red dashes. YIELD_ZONE_LINE=vivid draws the bold cut, to compare.
+  // (exactly as mapped: Z. 2026-11, "swap for Canary"; it was a step darker, to carry a line on white)
+  if (tone === 'grey' && process.env.YIELD_ZONE_LINE !== 'vivid') return zoneFill(zone);
+  const c = zoneInk(zone, look);
+  return c ? inkFor(c, 0.5) : null;
+}
+const zoneEdgesOn = () => process.env.YIELD_ZONE_EDGES !== '0' && deckLook().id !== 'heron';
+/**
+ * The white model's shade in a colour, not grey (Z. 2026-11, on the massing's grey walls: "try to make a colourful
+ * volume shadow here, don't use grey"): the ink a wall turned from the light takes. `zone`: each neighbour its zone's
+ * colour, lightened, what is built Canary's light blue; `blue`: every wall Canary's light blue; `warm`: the shadow
+ * plan's peach; `grey`: as it was. YIELD_ISO_SHADE picks; Heron has its line model.
+ */
+type IsoShade = 'grey' | 'zone' | 'blue' | 'warm';
+const isoShadeMode = (): IsoShade => (process.env.YIELD_ISO_SHADE as IsoShade | undefined) ?? 'zone';
+function isoShadeOf(zone: string | undefined, look: DeckLook, built = false): string | null {
+  const mode = isoShadeMode(), tone = zoneTone(look);
+  if (look.id === 'heron' || mode === 'grey' || tone === 'grey') return null;
+  if (mode === 'blue') return ISO_SHADE.blue;
+  if (mode === 'warm') return ISO_SHADE.warm;
+  if (built) return tone === 'bands' ? siteShade() : tone === 'vivid' ? ISO_SHADE.sky : ISO_SHADE.blue;
+  // (the zone's own colour, as its outline is: the mapped colour, or its vivid cut, where the style keeps them)
+  const line = zoneLine(zone, look);
+  return line ? (tone ? line : mix(line, '#ffffff', 0.45)) : ISO_SHADE.blue;
+}
+/** The massing's shades: the mapped mid blue (E2's), R5's pale pink, and Canary's sky blue (its sun's 1–2 h). */
+const ISO_SHADE = { blue: '#b4c6e7', warm: '#ffd9d9', sky: '#7fa8ff' };
+/** A neighbour's outline in its zone's colour on a path's plan: its width, millimetres. */
+const ZONE_EDGE_PLAN = 0.5;
 /** The lot in a zone, as the style's context sheet tints the land: its category's fill and texture, or its ePlanning colour. */
 function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill: Fill } | null {
   if (!zone) return null;
@@ -721,7 +831,7 @@ function lotFill(zone: string | undefined, look: DeckLook): { key: string; fill:
 /** A neighbour's future, over what stands: a pale glass, dashed, light enough to see the proposal through. */
 const FUTURE_OPACITY = 0.18, FUTURE_DASH = '1.4,0.8';
 /** The tier badges' ink in the deck's tables, set once for the sheet's CSS. */
-const ENVELOPE = '#5b6670';
+const ENVELOPE = '#6a6a6a';
 /** What stands on the site today, where a scenario keeps it. */
 
 /**
@@ -729,7 +839,7 @@ const ENVELOPE = '#5b6670';
  * read), or what stands there today, or neither (the site alone); `behind` turns the camera to the opposite corner,
  * so a compliance sheet's second view shows the faces the first hides.
  */
-interface Scheme { y?: YieldResult; facades?: FacadeFace[]; roofs?: RoofCell[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
+interface Scheme { y?: YieldResult; facades?: FacadeFace[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
 
 
 /** The storey heights the study builds to: the bottom and the top of storey s. */
@@ -742,6 +852,8 @@ const storeyZ = storeyLevels;
  */
 /** How much town round the site the massing's frame is fitted to, in metres beyond the site's bounds; the town runs on past the frame. */
 const FOCUS_M = 40;
+/** A path's massing, the whole page to itself: closer, the massing the larger for it (a page as high again shows no more of a frame its width governs). */
+const FOCUS_FULL_M = 14;
 function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w: number; h: number }, scheme: Scheme, id: string): string {
   const y = scheme.y;
   const Y = yieldInks();
@@ -762,11 +874,18 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
   // town round it, and what is drawn runs out to its every edge (the pipeline reads the town this far).
   const reach = Math.max(...s.ring.map((p) => Math.hypot(p.x, p.y))) + 230;
   const local = (rg: number[][]) => rg.map(([lon, lat]) => s.toLocal(lon, lat));
-  const neighbours = b.context.map((cb, i) => ({
-    rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
-    heightM: cb.known ? cb.heightM : undefined,
-    fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
-  }));
+  const neighbours = b.context.map((cb, i) => {
+    const nt = neighbourTone(cb, cb.controls?.zone, look);
+    return {
+      rings: [local(cb.rings[0] ?? [])].filter((rg) => rg.length >= 3),
+      heightM: cb.known ? cb.heightM : undefined,
+      fill: zoneInk(cb.controls?.zone, look) ?? M.noHeight,
+      // (the white model's neighbours: each outlined in its zone's colour, or its storeys', its walls shaded in it)
+      ...(scheme.mono && zoneEdgesOn() && nt.line ? { edge: nt.line } : {}),
+      // (not on the solar access views: their colour is the facades' sun)
+      ...(scheme.mono && !scheme.facades && nt.shade ? { shade: nt.shade } : {}),
+    };
+  });
   const z = y ? storeyZ(y) : undefined;
   const built: Prism[] = [];
   if (y && z) y.tiers.forEach((t, ti) => {
@@ -778,8 +897,10 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
       const p = t.plate[f.ring][f.edge], same = Math.hypot(f.a.x - p.x, f.a.y - p.y) < 1e-6;
       return f.cells.map((c) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: bandOf(c.hours).fill, flat: true }));
     });
-    const roof = (scheme.roofs ?? []).filter((r) => r.tier === ti).map((r) => ({ pts: r.pts, fill: bandOf(r.hours).fill }));
-    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), edge: '#1c1c1c', edgeW: 0.2, windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}), ...(roof.length ? { roof } : {}) });
+    // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs; white
+    // where its facades are coloured by their sun, the roof not being counted: Z. 2026-11, "make the roof white")
+    const roofFill = cells.length ? '#ffffff' : useFill(t.use);
+    built.push({ rings: t.plate, z0: z.bottom(t.from), z1: z.top(top), fill: useFill(t.use), roofFill, edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, ...(!scheme.facades && isoShadeOf(undefined, look, true) ? { shadeInk: isoShadeOf(undefined, look, true)! } : {}), windows: true, storeys: Array.from({ length: top - t.from }, (_, i) => z.top(t.from + i)), ...(cells.length ? { cells } : {}) });
   });
   // What stands, at its recorded height, its storeys ruled; one with none recorded at a nominal two, dashed.
   for (const e of scheme.standing ?? []) {
@@ -787,7 +908,7 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     const top = e.heightM ?? (e.storeys ? e.storeys * 3.1 : 6.2);
     const n = e.storeys ?? Math.max(1, Math.round(top / 3.1));
     // (Heron's line model draws a tone as a hatch, the closer the darker: what stands on the site in a close one, as the report's built form draws it)
-    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, edge: '#1c1c1c', edgeW: 0.2, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
+    built.push({ rings: e.rings, z0: 0, z1: top, fill: look.id === 'heron' ? '#b0b0b0' : Y.standing, ...(look.id === 'heron' ? {} : { roofFill: Y.standing }), ...(!scheme.facades && isoShadeOf(undefined, look, true) ? { shadeInk: isoShadeOf(undefined, look, true)! } : {}), edge: BUILT_LINE.ink, edgeW: BUILT_LINE.massing, dashed: !known, windows: known, storeys: Array.from({ length: n - 1 }, (_, i) => ((i + 1) * top) / n) });
   }
   const scene: AxoScene = {
     ring: s.ring, frontNormal: { x: nx, y: ny }, reach, neighbours, built,
@@ -797,10 +918,13 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     trees: (b.trees ?? []).map((tr) => ({ p: s.toLocal(tr.lon, tr.lat), r: Math.max(1.2, Math.min(8, tr.canopyM / 2)) })),
     hob: s.hob?.metres ? { metres: s.hob.metres, note: `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(s.hob.metres))}m ABOVE THE GROUND, ABOVE THE FRAME` } : undefined,
     envelopes: y && z ? y.tiers.map((t) => ({ rings: t.envelope, z: z.top(t.to) })) : [],
-    inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb },
+    inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb, siteLine: { ink: SITE_LINE.ink, w: SITE_LINE.massing } },
     mono: scheme.mono,
+    // (a path's own spread keeps the style's trees, people and traffic; the solar access views stay white, their colour the facades' sun)
+    ...(scheme.mono && !scheme.facades && process.env.YIELD_ISO_ENTOURAGE !== 'white' ? { entourage: 'style' as const } : {}),
     futures: s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
-    silhouette: s.future.buildings.length > 0,
+    // (always: white in a white town, what is built is told by its heavy black outline)
+    silhouette: true,
     treesOnSite: !scheme.y,
     focusM: scheme.focusM ?? FOCUS_M,
   };
@@ -825,14 +949,25 @@ const hobLine = (h: { value: number; units: string }) => {
 
 /** What a compliance plan lays over the ground: the scheme's shadows, the land it shades, the separations as dimension lines. */
 interface PlanMarks {
-  /** The envelope's own shadow at named hours, outlined. */
-  shadows?: { rings: XY[][]; label: string }[];
+  /** The envelope's own shadow at named hours, outlined (or, `outline` false, only named at its far end), in `ink` where given. */
+  shadows?: { rings: XY[][]; label: string; ink?: string; outline?: boolean }[];
+  /**
+   * The envelope's own shadow as contours: the ground in it at least k of the hours, k = 1 … 7, each band (`rings` less
+   * `inner`, the next level in) in its tone, or a gradient across it from `a` to `b` (local metres), and edged.
+   */
+  bands?: { rings: XY[][]; inner: XY[][]; fill: string | { a: XY; b: XY; from: string; to: string }; edge?: string }[];
+  /** The neighbours' shadows (or every building's) as contours, under the envelope's own: as `bands`, unedged. */
+  groundBands?: { rings: XY[][]; inner: XY[][]; fill: string | { a: XY; b: XY; from: string; to: string } }[];
+  /** The envelope's own shadow as a sweep: each hour's in its own colour, translucent, outlined and named at its far end. */
+  sweep?: { rings: XY[][]; fill: string; edge: string; label: string; alpha: number }[];
   /** Every building's shadow, an hour at a time: the neighbours' hulls and the scheme's own, laid one hour over the last. */
   hours?: { hulls: XY[][]; scheme: XY[][] }[];
   /** The ground only the scheme shades, at one hour or more: hatched over its shadow. */
   added?: XY[][];
   shaded?: XY[][][];
-  dims?: { a: XY; b: XY; label: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string }[];
+  dims?: { a: XY; b: XY; label: string; /** what is asked of it, written small under the line: "min 12 m" */ asked?: string; ink: string; /** a dash attribute for the line, where the status is told by it */ dash?: string; /** it holds (not short): it may be left off where a nearer building on its line is dimensioned */ holds?: boolean }[];
+  /** How the shadows are drawn: the envelope's ink and each layer's strength, the neighbours', and whether the layers darken what is under them. */
+  look?: { own?: string; oAlpha?: number; nInk?: string; nAlpha?: number; multiply?: boolean };
 }
 /**
  * A separation's ink, and a compliance mark's: clear, holding only with a blank face, short. Green, amber and red;
@@ -846,14 +981,67 @@ const blankDash = () => (deckLook().id === 'heron' ? ' stroke-dasharray="1.1 0.7
 const shadowInk = () => '#3a3c41';
 /** Each hour's shadow at this opacity, the hours laid over each other, as the report lays them; n hours deep, the tint this. */
 const HOUR_ALPHA = 0.16, stackedAlpha = (n: number) => 1 - (1 - HOUR_ALPHA) ** n;
+/** On a path's plan each hour is lighter, and darkens what is under it: seven of them still leave the lot lines and the numbers to read. */
+const PLAN_HOUR_ALPHA = 0.1;
+/**
+ * Canary's colours for the shadows as contours, exact swatches of its palette, palest to deepest: four bands, the
+ * ground in shadow one or two hours, three or four, five or six, all seven (CONTOUR_HOURS). Pink, the residential
+ * zones' (R5, R2, R3, R4); orange, the C zones' (C4, C3, C2, C1); warm, its yellows to R4's red; blue, its blues (the
+ * neighbours' shadows, where they are contours of their own). Z. 2026-11: "swap for Canary" (they were steps between
+ * its colours, seven a ramp).
+ */
+const CANARY_SHADOW_RAMPS = {
+  pink: ['#ffd9d9', '#ffa6a3', '#ff776e', '#ff483b'],
+  orange: ['#ffda96', '#f7c568', '#f0ae3c', '#e69900'],
+  warm: ['#fff6bf', '#ffe766', '#f0ae3c', '#ff483b'],
+  blue: ['#e3ebf8', '#b4c6e7', '#8ea9db', '#7f9fd9'],
+};
+/** The hours in shadow each contour band starts at: one or two, three or four, five or six, all seven. */
+const CONTOUR_HOURS = [1, 3, 5, 7];
+/** A sweep's colour each hour, 9 am to 3 pm, exact swatches: pink to lilac (R3, R2, R1, IN1, IN3, E4, E5), or yellow to red. */
+const CANARY_SWEEPS = {
+  'pink-lilac': ['#ff776e', '#ffa6a3', '#ffcfff', '#deb8f5', '#c595e8', '#9999ff', '#9966ff'],
+  'yellow-red': ['#ffd400', '#f7c568', '#f0ae3c', '#e69900', '#ff776e', '#ff483b', '#c8231a'],
+};
+/**
+ * The separations on a path's plan: black, the distance over each line and what is asked under it (Z. 2026-11: "make the
+ * dims there black"). They were green, amber and red by their status, which the criteria table beside the plan marks.
+ */
+const DIM_INK = '#000000';
+/** What is asked of a separation, written small under its line: a grey, so the distance reads first. */
+const DIM_ASKED_INK = '#6a6a6a';
+/** A contour band of the envelope's shadow: nearly opaque, the lot lines faint through it. */
+const BAND_OPACITY = 0.88;
+/** The scheme's own shadow on it, in a colour of its own: each hour a little stronger than a neighbour's grey, so its colour holds where it falls on theirs. */
+const OWN_HOUR_ALPHA = 0.15;
+/** The same where three hours alone are drawn (9 am, 12 pm, 3 pm): each layer a firmer tone, so three read as seven did. */
+const THREE_HOUR_ALPHA = { neighbours: 0.17, own: 0.26 };
+/**
+ * The scheme's own shadow on a path's plan: the style's blue, over the neighbours' grey. Chosen from a board of
+ * pairs (Z. 2026-11: "the shadow of our design should have a different colour than the others"; then, on it in the
+ * accent's red, "not sure with the red shadow", "try different colours for shadows in plan, context shadow and your
+ * shadows"): a blue stands apart from the grey and from the separations' red and green written over it, which the
+ * red did not. Heron, black and white and one colour, keeps its accent.
+ */
+const ownShadowOnPlan = () => (deckLook().id === 'heron' ? siteInk() : INK.blue.deep);
 /** The envelope's own shadow, in the site's accent so what it adds reads apart from the neighbours' grey. */
 const ourShadowInk = () => siteInk();
+// (No word on a plan has a white outline round it: Z. 2026-11, "don't do white outlines on texts". A dimension, a
+// shadow's hour, a lot's number and a zone's name are written in their ink alone.)
 /** The ground only the envelope shades: a hatch in its shadow's ink, outlined. */
-const ADDED_HATCH = (): Fill => ({ kind: 'hatch', ink: inkFor(ourShadowInk(), 0.22), step: 0.62, w: 0.13, outline: inkFor(ourShadowInk(), 0.22), outlineW: 0.18 });
+const ADDED_HATCH = (ink = ourShadowInk()): Fill => ({ kind: 'hatch', ink: inkFor(ink, 0.22), step: 0.62, w: 0.13, outline: inkFor(ink, 0.22), outlineW: 0.18 });
 /** The buildings in plan as the report draws them: white, a grey hairline. */
 const PLAN_BUILDING = 'fill="#ffffff" stroke="#6f6f6f" stroke-width="0.18" stroke-linejoin="round"';
 /** A building on Heron's line plans: white in a heavy black outline, the figure of a figure-ground plan. */
 const LINE_BUILDING = 'fill="#ffffff" stroke="#111111" stroke-width="0.45" stroke-linejoin="round"';
+/** A zone's area over the first page's photograph: how strong its tint, and how wide the line round it, millimetres. */
+const ZONE_AREA_TINT = 0.16, ZONE_AREA_LINE = 0.7;
+/** The neighbours in black and white on a path's plan: white in a black line, solid black, or a quiet grey. */
+const BW_BUILDING = {
+  white: 'fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"',
+  black: 'fill="#2a2c30" stroke="#ffffff" stroke-width="0.2" stroke-linejoin="round"',
+  grey: 'fill="#d3d5d8" stroke="#ffffff" stroke-width="0.3" stroke-linejoin="round"',
+} as const;
 /** A park on Heron's line plans: a light hatch, as a site plan marks its green. */
 const LINE_PARK: Fill = { bg: '#ffffff', kind: 'hatch', ink: '#b4b4b4', step: 0.7, w: 0.08 };
 /** A storey count on a plan: 6 pt Arial, black, as the report's sun page sets them. */
@@ -882,8 +1070,14 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     /** A small plan's: no numbers on the neighbours' lots and no tier badges, the shadows and the separations to read. */
     plain?: boolean;
     /** The compliance plan, drawn as the report's sun page: no zone tints, every building white with its storeys, the shadows over the ground in Arial. */
-    study?: boolean } = {}): PlanResult {
+    study?: boolean;
+    /** That plan in the plans' colours: each lot tinted by its zone, the buildings in their zones' colours, the scheme in its use's; what it shows unchanged. */
+    tinted?: boolean;
+    /** The neighbours in black and white, no zone on them: lots untinted, buildings white in a black line, solid black, or grey; each lot's number alone. */
+    bw?: 'white' | 'black' | 'grey' } = {}): PlanResult {
   const room = opts.room ?? 1.35, inset = opts.inset ?? 0;
+  // the report's sun page as it is: white buildings on white ground, grey lines
+  const greyPlan = !!opts.study && !opts.tinted;
   const y = scheme.y;
   const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
   const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
@@ -931,7 +1125,30 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   // Each lot in its zone's tint, as the style's context sheet tints the
   // land, the lots alone so the streets stay white; the site is left to its
   // own marks.
-  if (!opts.study) {
+  // Over the first page's photograph the zones are areas, not lots: each zone's lots inside one line of its colour,
+  // so the photograph stays the page (Z. 2026-11, on every lot tinted and written with its zone over the aerial:
+  // "let's keep the aerial map there, but simplify the zoning"). YIELD_OVERVIEW_ZONES draws the alternatives: a light
+  // tint in the line ('both'), the tint alone ('tint'), or each lot tinted as before ('lots'). Heron keeps its hatches.
+  const zoneMode: 'lots' | 'outline' | 'tint' | 'both' = photo && look.id !== 'heron' ? ((process.env.YIELD_OVERVIEW_ZONES as 'lots' | 'outline' | 'tint' | 'both' | undefined) ?? 'outline') : 'lots';
+  const zoneAreas = zoneMode !== 'lots';
+  if (zoneAreas) {
+    const byZone = new Map<string, { ink: string; ds: string[] }>();
+    for (const pc of parcels) {
+      const ink = pc.site || !pc.zone ? null : zoneLine(pc.zone, look);
+      if (!ink) continue;
+      const key = pc.zone!.trim().toUpperCase();
+      (byZone.get(key) ?? byZone.set(key, { ink, ds: [] }).get(key)!).ds.push(...pc.local.map(path));
+    }
+    const frame = `x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"`;
+    let k = 0;
+    for (const { ink, ds } of byZone.values()) {
+      const d = ds.join('');
+      if (zoneMode !== 'outline') out.push(`<path data-zone-area="1" d="${d}" fill="${ink}" fill-opacity="${ZONE_AREA_TINT}"/>`);
+      // the line outside the area's edge alone: every lot's outline drawn, and all of it that falls on a lot of the zone masked out
+      if (zoneMode !== 'tint') out.push(`<defs><mask id="plan-zone-${id}-${k}" maskUnits="userSpaceOnUse" ${frame}><rect ${frame} fill="#ffffff"/><path d="${d}" fill="#000000"/></mask></defs><path data-zone-edge="1" d="${d}" fill="none" stroke="${ink}" stroke-width="${2 * ZONE_AREA_LINE}" stroke-linejoin="round" mask="url(#plan-zone-${id}-${k++})"/>`);
+    }
+  }
+  if (!greyPlan && !opts.bw && !zoneAreas) {
     const byKey = new Map<string, { fill: Fill; ds: string[] }>();
     for (const pc of parcels) {
       if (pc.site) continue;
@@ -946,14 +1163,15 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     const bb = { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h };
     for (const { fill, ds } of byKey.values()) out.push(fillShape(ds.join(''), bb, fill));
   }
-  const lotLine = opts.study ? 'stroke="#b4b4b4" stroke-width="0.12"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
+  const lotLine = greyPlan || opts.bw ? 'stroke="#b4b4b4" stroke-width="0.12"' : zoneAreas ? 'stroke="#ffffff" stroke-width="0.18" opacity="0.75"' : photo || look.lots === 'white' ? 'stroke="#ffffff" stroke-width="0.3"' : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   out.push(`<path d="${parcels.flatMap((pc) => pc.local.map(path)).join('')}" fill="none" ${lotLine}/>`);
   let kerbs = b.kerbs;
   if (!kerbs) {
     try { kerbs = estimateKerbs(parcels.flatMap((pc) => pc.rings), b.roads, [], []); } catch { kerbs = []; }
   }
-  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${opts.study || linePlan ? '#8c8c8c' : Y.kerb}" stroke-width="${opts.study || linePlan ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  const blds = b.context.map((cb) => local(cb.rings[0] ?? [])).filter((rg) => rg.length >= 3);
+  if (kerbs.length) out.push(`<path d="${kerbs.map((kl) => line(local(kl.coords))).join('')}" fill="none" stroke="${greyPlan || linePlan || opts.bw ? '#8c8c8c' : Y.kerb}" stroke-width="${greyPlan || linePlan || opts.bw ? 0.22 : 0.3}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  const bldsOf = b.context.map((cb) => ({ cb, rg: local(cb.rings[0] ?? []) })).filter((x) => x.rg.length >= 3);
+  const blds = bldsOf.map((x) => x.rg);
   // A line plan's trees: each a circle at its crown's size with its centre marked, under the buildings; none on the
   // site where a scheme clears it, none over the photograph (which shows them)
   if (linePlan && !photo && !opts.study && b.trees?.length) {
@@ -968,23 +1186,55 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     if (rings.length) out.push(`<g data-plan-trees="1"><path d="${rings.join('')}" fill="none" stroke="#5a5a5a" stroke-width="0.12"/><path d="${dots.join('')}" fill="none" stroke="#5a5a5a" stroke-width="0.4" stroke-linecap="round"/></g>`);
   }
   const marks = opts.marks;
-  // The study's shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
+  // The shadows, under the buildings: each hour one translucent layer over the last, a group's opacity so two
   // buildings' shadows in one hour do not stack; where the hours pile up the ground darkens.
   // The neighbours' in grey, then the envelope's own over them in the site's accent: what it adds reads apart.
-  if (opts.study) {
-    for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.hulls.map(path).join('')}" fill="${shadowInk()}" fill-rule="nonzero"/></g>`);
-    for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${HOUR_ALPHA}"><path d="${hr.scheme.map(path).join('')}" fill="${ourShadowInk()}" fill-rule="evenodd"/></g>`);
-    // where only the envelope shades the ground, at one hour or more: what it would overshadow, hatched
-    if (marks?.added?.length) out.push(`<g data-added="1">${fillShape(marks.added.map(path).join(''), { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }, ADDED_HATCH())}</g>`);
-  }
+  const LK = marks?.look;
+  const shade = LK?.own ?? ourShadowInk();
+  const blend = LK?.multiply ? ' style="mix-blend-mode:multiply"' : '';
+  for (const hr of marks?.hours ?? []) if (hr.hulls.length) out.push(`<g opacity="${LK?.nAlpha ?? HOUR_ALPHA}"${blend}><path d="${hr.hulls.map(path).join('')}" fill="${LK?.nInk ?? shadowInk()}" fill-rule="nonzero"/></g>`);
+  for (const hr of marks?.hours ?? []) if (hr.scheme.length) out.push(`<g opacity="${LK?.oAlpha ?? HOUR_ALPHA}"${blend}><path d="${hr.scheme.map(path).join('')}" fill="${shade}" fill-rule="evenodd"/></g>`);
+  // The envelope's shadow as contours, after a contour map of exposure: each band the ground in its shadow so many of
+  // the hours, palest at one hour, deepest at all seven; a band its own tone, or a gradient across the sweep of the
+  // day. Each band is the level less the next one in (even-odd), drawn once, so the lot lines still read through.
+  const gradDefs: string[] = [];
+  const bandFill = (f: string | { a: XY; b: XY; from: string; to: string }, gid: string) => {
+    if (typeof f === 'string') return f;
+    const [ax, ay] = at(f.a), [bx, by] = at(f.b);
+    gradDefs.push(`<linearGradient id="${gid}" gradientUnits="userSpaceOnUse" x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}"><stop offset="0" stop-color="${f.from}"/><stop offset="1" stop-color="${f.to}"/></linearGradient>`);
+    return `url(#${gid})`;
+  };
+  // (the neighbours' first, as contours where they are drawn so, then the envelope's over them)
+  (marks?.groundBands ?? []).forEach((bd, k) => {
+    if (bd.rings.length) out.push(`<path data-ground-band="${k + 1}" d="${[...bd.rings, ...bd.inner].map(path).join('')}" fill="${bandFill(bd.fill, `plan-gband-${id}-${k}`)}" fill-rule="evenodd" opacity="${BAND_OPACITY}"/>`);
+  });
+  (marks?.bands ?? []).forEach((bd, k) => {
+    if (bd.rings.length) out.push(`<path data-band="${k + 1}" d="${[...bd.rings, ...bd.inner].map(path).join('')}" fill="${bandFill(bd.fill, `plan-band-${id}-${k}`)}" fill-rule="evenodd" opacity="${BAND_OPACITY}"/>`);
+  });
+  (marks?.bands ?? []).forEach((bd) => { if (bd.edge && bd.rings.length) out.push(`<path d="${bd.rings.map(path).join('')}" fill="none" stroke="${bd.edge}" stroke-width="0.12" stroke-linejoin="round" opacity="0.7"/>`); });
+  // … or as a sweep, after a shadow-range diagram: each hour's shadow in its own colour, darkening where they overlap
+  for (const sw of marks?.sweep ?? []) if (sw.rings.length) out.push(`<g data-sweep="1" opacity="${sw.alpha}" style="mix-blend-mode:multiply"><path d="${sw.rings.map(path).join('')}" fill="${sw.fill}" fill-rule="evenodd"/></g>`);
+  for (const sw of marks?.sweep ?? []) if (sw.rings.length) out.push(`<path d="${sw.rings.map(path).join('')}" fill="none" stroke="${sw.edge}" stroke-width="0.16" stroke-linejoin="round"/>`);
+  // where only the envelope shades the ground, at one hour or more: what it would overshadow, hatched
+  if (marks?.added?.length) out.push(`<g data-added="1">${fillShape(marks.added.map(path).join(''), { x0: box.x, y0: box.y, x1: box.x + box.w, y1: box.y + box.h }, ADDED_HATCH(shade))}</g>`);
   // The buildings as the style draws them: white in a hairline of their
   // zone family's ink, filled in the family's colour with a white edge, a
   // white line round the photograph's roofs, or a quiet grey where the
   // aerial style has no photograph.
   // the land the scheme adds shadow to, under the buildings that stand on it
-  for (const rings of marks?.shaded ?? []) out.push(`<path d="${rings.map(path).join('')}" fill="${siteInk()}" fill-opacity="0.07" fill-rule="evenodd" stroke="${siteInk()}" stroke-width="0.45" stroke-dasharray="0.6,0.6"/>`);
-  if (opts.study && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
+  for (const rings of marks?.shaded ?? []) out.push(`<path d="${rings.map(path).join('')}" fill="${shade}" fill-opacity="0.07" fill-rule="evenodd" stroke="${shade}" stroke-width="0.45" stroke-dasharray="0.6,0.6"/>`);
+  if (greyPlan && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${linePlan ? LINE_BUILDING : PLAN_BUILDING}/>`);
   else if (linePlan && !photo) { if (blds.length) out.push(`<path d="${blds.map(path).join('')}" ${LINE_BUILDING}/>`); }
+  else if (opts.bw === 'white' && zoneEdgesOn() && blds.length) {
+    // white, each in a line of its zone's colour (its lot's zone), or of its storeys' (Canary); black where it has none
+    const byInk = new Map<string, string[]>();
+    for (const { cb, rg } of bldsOf) {
+      const ink = neighbourTone(cb, parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone, look).line ?? '';
+      (byInk.get(ink) ?? byInk.set(ink, []).get(ink)!).push(path(rg));
+    }
+    for (const [ink, ds] of byInk) out.push(ink ? `<path data-zone-line="1" d="${ds.join('')}" fill="#ffffff" stroke="${ink}" stroke-width="${ZONE_EDGE_PLAN}" stroke-linejoin="round"/>` : `<path d="${ds.join('')}" ${BW_BUILDING.white}/>`);
+  }
+  else if (opts.bw && blds.length) out.push(`<path d="${blds.map(path).join('')}" ${BW_BUILDING[opts.bw]}/>`);
   else for (const rg of blds) {
     const zone = parcels.find((pc) => !pc.site && within(centre(rg), pc.local))?.zone;
     // on paper in the aerial styles, each building a light cut of its zone's colour, as the massing above colours it
@@ -997,10 +1247,10 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   }
 
   // The future context's footprints, dashed over today's buildings.
-  const futures = opts.study ? s.future.buildings : [];
+  const futures = opts.study || marks ? s.future.buildings : [];
   if (futures.length) out.push(`<path d="${futures.map((fb) => path(fb.ring)).join('')}" fill="none" stroke="${Y.futureEdge}" stroke-width="0.3" stroke-dasharray="1,0.6" stroke-linejoin="round"/>`);
   // The compliance marks under the scheme: its own shadow at named hours outlined (the hours' tint is everyone's).
-  for (const sh of marks?.shadows ?? []) out.push(`<path d="${sh.rings.map(path).join('')}" fill="none" stroke="${ourShadowInk()}" stroke-width="0.25" stroke-dasharray="1.2,0.8"/>`);
+  for (const sh of marks?.shadows ?? []) if (sh.outline !== false) out.push(`<path d="${sh.rings.map(path).join('')}" fill="none" stroke="${sh.ink ?? shade}" stroke-width="0.25" stroke-dasharray="1.2,0.8"/>`);
 
   // What stands on the site, where the scheme is what stands.
   for (const e of scheme.standing ?? []) out.push(`<path d="${e.rings.map(path).join('')}" fill="${Y.standing}" fill-rule="evenodd" stroke="${linePlan ? '#111111' : '#3a3a3a'}" stroke-width="${linePlan ? 0.55 : 0.2}" stroke-linejoin="round"/>`);
@@ -1009,13 +1259,17 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
   for (const t of tiers) {
     const built = t.from <= y!.storeys;
     if (!t.plate.length) continue;
-    out.push(opts.study ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
+    // (what stands is drawn above, in its own fill: its tiers are there for their storeys alone)
+    if (!greyPlan && scheme.standing?.length) continue;
+    out.push(greyPlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="#ffffff" fill-rule="evenodd" stroke="#1c1c1c" stroke-width="0.3" stroke-linejoin="round"/>` : '')
       // (a line plan: what is built the heaviest outline on the sheet)
       : linePlan ? (built ? `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-rule="evenodd" stroke="#000000" stroke-width="0.6" stroke-linejoin="round"/>` : '')
-        : `<path d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}" fill-opacity="${built ? 0.55 : 0.18}" fill-rule="evenodd" stroke="none"/>`);
+        // (a built plate solid, in the colour its massing's roof and its key have: it stood at 55%, a paler yellow on the
+        // plan than on the isometric beside it. Z. 2026-11: "the yellows should be the same everywhere")
+        : `<path${built ? ' data-plate="1"' : ''} d="${t.plate.map(path).join('')}" fill="${useFill(t.use)}"${built ? '' : ' fill-opacity="0.18"'} fill-rule="evenodd" stroke="${built ? BUILT_LINE.ink : 'none'}" stroke-width="${BUILT_LINE.plan}" stroke-linejoin="round"/>`);
   }
-  y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
-  out.push(`<path d="${path(s.ring)}" fill="none" stroke="${siteInk()}" stroke-width="0.6" stroke-dasharray="3,1.2"/>`);
+  if (greyPlan || !scheme.standing?.length) y?.tiers.forEach((t, i) => { for (const rg of t.envelope) out.push(`<path d="${path(rg)}" fill="none" stroke="${Y.envelope}" stroke-width="0.3" stroke-dasharray="${['2,1', '1.2,1.2', '3,1,0.8,1', '0.6,0.9'][i % 4]}"/>`); });
+  out.push(`${photo ? `<path d="${path(s.ring)}" fill="none" stroke="#ffffff" stroke-width="${SITE_LINE.plan + 2 * SITE_LINE.casing}" stroke-linejoin="round"/>` : ''}<path data-site="1" d="${path(s.ring)}" fill="none" stroke="${SITE_LINE.ink}" stroke-width="${SITE_LINE.plan}" stroke-linejoin="round"/>`);
 
   // The scale bar and the north point, first: what is written later keeps off them. A plan as wide as the right page
   // takes the report's, where every map of the decks has it: under the drawing's name, on the page's last line, white.
@@ -1049,38 +1303,91 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     taken.push([px - R - 0.4, py - R - 0.4, px + R + 0.4, py + R + 0.4]);
   });
 
-  // The separations: a dimension line from the scheme to each building near it, in its status's ink, the distance along it;
-  // and each shadow's hour at its far end.
-  for (const dm of marks?.dims ?? []) {
+  // The separations, as an architect dimensions a plan (Z. 2026-11: "dims are not very beautiful, change that"): a fine
+  // line run a little past its ends, a short oblique tick at each end, the distance over the line in plain figures and
+  // what is asked of it small under it, both turned to the line and read from the sheet's foot or its right. The words
+  // go where they cross nothing drawn heavily (the site's line, another dimension, the scheme's outline) and nothing
+  // written: at the line's middle, or slid along it, or past its ends. (It was a heavy line with square ticks and the
+  // whole "13.1 / 12 m" in bold, across whatever it met: the site's line through the figures.)
+  const SITE_MARGIN = 0.9;
+  const DIM = { line: 0.16, tick: 0.32, tickHalf: 0.75, overrun: 0.9, fs: 2.25, fsAsked: 1.75, gap: 0.55 };
+    const heavy: [[number, number], [number, number]][] = [];
+  const ringSegs = (rg: XY[]) => rg.map((p, i) => [at(p), at(rg[(i + 1) % rg.length])] as [[number, number], [number, number]]);
+  const siteSegs = ringSegs(s.ring);
+  for (const t of y?.tiers ?? []) for (const rg of t.plate) heavy.push(...ringSegs(rg));
+  for (const st of scheme.standing ?? []) for (const rg of st.rings) heavy.push(...ringSegs(rg));
+  // (the neighbours' outlines are lighter, but words across them read less well: they count, for less)
+  const light = (marks?.dims ?? []).length ? blds.flatMap(ringSegs) : [];
+  const cross = (p: number[], q: number[], r: number[], t: number[]) => {
+    const d = (a: number[], b2: number[], c: number[]) => (b2[0] - a[0]) * (c[1] - a[1]) - (b2[1] - a[1]) * (c[0] - a[0]);
+    return d(p, q, r) * d(p, q, t) < 0 && d(r, t, p) * d(r, t, q) < 0;
+  };
+  const inside = (pt: number[], quad: number[][]) => quad.every((c, i) => { const n = quad[(i + 1) % 4]; return (n[0] - c[0]) * (pt[1] - c[1]) - (n[1] - c[1]) * (pt[0] - c[0]) >= 0; })
+    || quad.every((c, i) => { const n = quad[(i + 1) % 4]; return (n[0] - c[0]) * (pt[1] - c[1]) - (n[1] - c[1]) * (pt[0] - c[0]) <= 0; });
+  const hitCount = (quad: number[][], segs: [[number, number], [number, number]][]) => segs.filter(([p, q]) => inside(p, quad) || inside(q, quad) || quad.some((c, i) => cross(c, quad[(i + 1) % 4], p, q))).length;
+  const dimAll = (marks?.dims ?? []).map((dm) => {
     const [x1, y1] = at(dm.a), [x2, y2] = at(dm.b);
-    const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
-    const tick = (x: number, yy: number) => `M${(x - uy * 1.1).toFixed(2)},${(yy + ux * 1.1).toFixed(2)}L${(x + uy * 1.1).toFixed(2)},${(yy - ux * 1.1).toFixed(2)}`;
-    out.push(`<path d="M${x1.toFixed(2)},${y1.toFixed(2)}L${x2.toFixed(2)},${y2.toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="0.35"/>`);
-    // the distance as a dimension is written: turned to its line and standing just off it, not across it, read from the
-    // sheet's foot or from its right (over a line that runs across, left of one that runs up). At the line's middle, or
-    // slid along it, then on its other side, then past its ends, until clear of what is written; nowhere clear, the line alone
-    const w = dm.label.length * 1.45 + 1.6, CAP = 1.8;
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1;
+    return { dm, x1, y1, x2, y2, len, ux: (x2 - x1) / len, uy: (y2 - y1) / len };
+  });
+  // a separation that runs on through a nearer building, itself dimensioned, is left off where it holds: the nearer one
+  // is the one that tells, and two lines over each other read as neither (a house next door and the one beyond it)
+  const offLine = (p: number[], g: (typeof dimAll)[number]) => {
+    const t = (p[0] - g.x1) * g.ux + (p[1] - g.y1) * g.uy;
+    return t > 0 && t < g.len && Math.abs((p[0] - g.x1) * g.uy - (p[1] - g.y1) * g.ux) < 1.2;
+  };
+  const dimGeo = dimAll.filter((g) => !(g.dm.holds && dimAll.some((o) => o !== g && o.len < g.len && offLine([o.x2, o.y2], g))));
+  // the lines first, run past their ends, the ticks oblique at 45 degrees to them; the words after, over every line
+  for (const { dm, x1, y1, x2, y2, ux, uy } of dimGeo) {
+    const ox = ux * DIM.overrun, oy = uy * DIM.overrun, tx = ((ux - uy) / Math.SQRT2) * DIM.tickHalf, ty = ((ux + uy) / Math.SQRT2) * DIM.tickHalf;
+    const tick = (x: number, yy: number) => `M${(x - tx).toFixed(2)},${(yy - ty).toFixed(2)}L${(x + tx).toFixed(2)},${(yy + ty).toFixed(2)}`;
+    out.push(`<path data-dim-line="1" d="M${(x1 - ox).toFixed(2)},${(y1 - oy).toFixed(2)}L${(x2 + ox).toFixed(2)},${(y2 + oy).toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.line}"${dm.dash ?? ''}/><path d="${tick(x1, y1)}${tick(x2, y2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.tick}" stroke-linecap="round"/>`);
+  }
+  // the words, the shortest dimension's first (it has the least room): at the spot that crosses the fewest heavy lines
+  // and other dimensions, the middle first; a distance too long for its line goes past an end, its line run on under it
+  [...dimGeo.keys()].sort((i, j) => dimGeo[i].len - dimGeo[j].len).forEach((di) => {
+    const { dm, x1, y1, x2, y2, len, ux, uy } = dimGeo[di];
     // (a line within half a degree of upright reads up whichever way it leans, so the rounding of its ends does not turn it over)
     let ang = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
     if (ang > 89.5) ang -= 180;
     if (ang <= -90.5) ang += 180;
     const cs = Math.cos((ang * Math.PI) / 180), sn = Math.sin((ang * Math.PI) / 180);
-    // off the line by a hair; by the ticks' reach where the line is shorter than its words, which then pass over them
-    const off = len < w ? 1.5 : 0.7;
-    const along = [0.5, 0.7, 0.3, 0.85, 0.15], past = [1.15, -0.15];
-    const tries = [...along.map((t) => [t, 1]), ...along.map((t) => [t, -1]), ...past.map((t) => [t, 1]), ...past.map((t) => [t, -1])];
-    for (const [t, side] of tries) {
-      const mx = x1 + (x2 - x1) * t, my = y1 + (y2 - y1) * t;
-      // the words' baseline in their own frame, over the line (side 1) or under it; and their box, turned with them
-      const base = side > 0 ? -off : off + CAP;
-      const corners = [[-w / 2, base - CAP - 0.3], [w / 2, base - CAP - 0.3], [w / 2, base + 0.3], [-w / 2, base + 0.3]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
-      const bx: Box = [Math.min(...corners.map((c) => c[0])), Math.min(...corners.map((c) => c[1])), Math.max(...corners.map((c) => c[0])), Math.max(...corners.map((c) => c[1]))];
-      if (!clear(bx)) continue;
-      out.push(`<text transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})" y="${base.toFixed(2)}" text-anchor="middle" font-size="2.5" font-weight="700" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
-      taken.push(bx);
-      break;
+    const w1 = dm.label.length * 0.56 * DIM.fs + 0.8, w2 = (dm.asked?.length ?? 0) * 0.56 * DIM.fsAsked + 0.8, cap1 = 0.72 * DIM.fs, cap2 = 0.72 * DIM.fsAsked;
+    const wMax = Math.max(w1, w2);
+    // the distance's box over the line, what is asked's under it, in the words' own frame, turned and set at a point
+    const quad = (mx: number, my: number, w: number, top: number, bottom: number) => [[-w / 2, top], [w / 2, top], [w / 2, bottom], [-w / 2, bottom]].map(([dx, dy]) => [mx + dx * cs - dy * sn, my + dx * sn + dy * cs]);
+    const boxOf = (q: number[][]): Box => [Math.min(...q.map((c) => c[0])), Math.min(...q.map((c) => c[1])), Math.max(...q.map((c) => c[0])), Math.max(...q.map((c) => c[1]))];
+    const otherDims = dimGeo.filter((_, j) => j !== di).map((o) => [[o.x1, o.y1], [o.x2, o.y2]] as [[number, number], [number, number]]);
+    const past = DIM.overrun + wMax / 2 + 0.5;
+    const along = [0.5, 0.38, 0.62, 0.27, 0.73, 0.16, 0.84].map((t) => len * t).concat([len + past, -past, len + past + 2.5, -past - 2.5]);
+    let best: { s: number; mx: number; my: number; b1: Box; b2: Box | null; score: number } | null = null;
+    along.forEach((sAt, k) => {
+      const mx = x1 + ux * sAt, my = y1 + uy * sAt;
+      const q1 = quad(mx, my, w1, -DIM.gap - cap1 - 0.2, -DIM.gap + 0.2), q2 = dm.asked ? quad(mx, my, w2, DIM.gap - 0.2, DIM.gap + cap2 + 0.2) : null;
+      const b1 = boxOf(q1), b2 = q2 ? boxOf(q2) : null;
+      if (!clear(b1) || (b2 && !clear(b2))) return;
+      // (the site's line is thick: the words keep a margin from it, not only off it; and a building's outline that runs
+      // close along under them, where the line comes off its corner, counts as crossing them)
+      const m1 = quad(mx, my, w1 + 2 * SITE_MARGIN, -DIM.gap - cap1 - 0.2 - SITE_MARGIN, -DIM.gap + 0.2), m2 = dm.asked ? quad(mx, my, w2 + 2 * SITE_MARGIN, DIM.gap - 0.2, DIM.gap + cap2 + 0.2 + SITE_MARGIN) : null;
+      const h1 = quad(mx, my, w1 + 0.8, -DIM.gap - cap1 - 0.6, -0.1), h2 = dm.asked ? quad(mx, my, w2 + 0.8, 0.1, DIM.gap + cap2 + 0.6) : null;
+      // (a word squeezed between ticks closer than it is wide reads as crossing them: it counts against the spot)
+      const squeezed = sAt > 0 && sAt < len && len < wMax + 0.6 ? 1 : 0;
+      const score = 12 * (hitCount(m1, siteSegs) + (m2 ? hitCount(m2, siteSegs) : 0)) + 10 * (hitCount(h1, heavy) + (h2 ? hitCount(h2, heavy) : 0)) + 6 * (hitCount(q1, otherDims) + (q2 ? hitCount(q2, otherDims) : 0)) + 3 * (hitCount(q1, light) + (q2 ? hitCount(q2, light) : 0)) + 8 * squeezed + k * 0.1 + (sAt < 0 || sAt > len ? 4 : 0);
+      if (!best || score < best.score) best = { s: sAt, mx, my, b1, b2, score };
+    });
+    if (!best) return;
+    const { s: sAt, mx, my, b1, b2 } = best as { s: number; mx: number; my: number; b1: Box; b2: Box | null };
+    // past an end, the line runs on under the words, as far as they go
+    if (sAt < 0 || sAt > len) {
+      const from = sAt < 0 ? -DIM.overrun : len + DIM.overrun, to = sAt < 0 ? sAt - wMax / 2 : sAt + wMax / 2;
+      out.push(`<path d="M${(x1 + ux * from).toFixed(2)},${(y1 + uy * from).toFixed(2)}L${(x1 + ux * to).toFixed(2)},${(y1 + uy * to).toFixed(2)}" fill="none" stroke="${dm.ink}" stroke-width="${DIM.line}"/>`);
     }
-  }
+    const rot = `transform="translate(${mx.toFixed(2)},${my.toFixed(2)}) rotate(${ang.toFixed(1)})"`;
+    out.push(`<text ${rot} y="${(-DIM.gap).toFixed(2)}" text-anchor="middle" font-size="${DIM.fs}" letter-spacing="0.08" fill="${dm.ink}" data-dim="1">${esc(dm.label)}</text>`);
+    if (dm.asked) out.push(`<text ${rot} y="${(DIM.gap + cap2).toFixed(2)}" text-anchor="middle" font-size="${DIM.fsAsked}" letter-spacing="0.06" fill="${DIM_ASKED_INK}" data-dim-asked="1">${esc(dm.asked)}</text>`);
+    taken.push(b1);
+    if (b2) taken.push(b2);
+  });
   for (const sh of marks?.shadows ?? []) {
     // the far end of the shadow from the site, pulled in to the frame
     const far = sh.rings.flat().reduce((m, q) => (Math.hypot(q.x - cx, q.y - cy) > Math.hypot(m.x - cx, m.y - cy) ? q : m), { x: cx, y: cy });
@@ -1090,7 +1397,7 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       lx = Math.max(box.x + 8 + inset, Math.min(box.x + box.w - 8 - inset, lx)); ly = Math.max(box.y + 12 + inset, Math.min(box.y + box.h - 8 - inset, ly));
       const bx: Box = [lx - 6, ly - 2.4, lx + 6, ly + 1];
       if (!clear(bx)) continue;
-      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${inkFor(ourShadowInk(), 0.08)}">${esc(sh.label.toUpperCase())}</text>`);
+      out.push(`<text x="${lx.toFixed(2)}" y="${ly.toFixed(2)}" text-anchor="middle" font-size="2.6" font-weight="700" fill="${sh.ink ? inkFor(sh.ink, 0.2) : inkFor(shade, 0.08)}">${esc(sh.label.toUpperCase())}</text>`);
       taken.push(bx);
       break;
     }
@@ -1153,12 +1460,18 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
       return [r.pts[i - 1][0] + (r.pts[i][0] - r.pts[i - 1][0]) * t, r.pts[i - 1][1] + (r.pts[i][1] - r.pts[i - 1][1]) * t];
     };
     const half = Math.min(total / 2, textLen / 2 + 6);
-    for (const k of [0, 1, -1, 2, -2, 3, -3]) {
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5]) {
       const c = total / 2 + k * 12;
       if (c - half < 0 || c + half > total) continue;
       let p0 = along(c - half), p1 = along(c + half);
       if (p0[0] > p1[0]) [p0, p1] = [p1, p0];
-      if (Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) < textLen) continue;
+      const chord = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]);
+      if (chord < textLen) continue;
+      // The road must run along the chord its name is written on: where it bends between the two ends the chord
+      // cuts the corner, and the name lies over the lots (Glanfield Street at Maroubra, written across a house).
+      const off = (q: [number, number]) => Math.abs((p1[0] - p0[0]) * (q[1] - p0[1]) - (p1[1] - p0[1]) * (q[0] - p0[0])) / (chord || 1);
+      const run = [0.25, 0.5, 0.75].map((f) => along(c - half + 2 * half * f)).concat(r.pts.filter((_, i) => cum[i] > c - half && cum[i] < c + half));
+      if (run.some((q) => off(q) > Math.max(1, 3 * mm))) continue;
       const mx = (p0[0] + p1[0]) / 2, my = (p0[1] + p1[1]) / 2, ang = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]);
       const W = Math.abs(textLen * Math.cos(ang)) + Math.abs(FS * Math.sin(ang)), H = Math.abs(textLen * Math.sin(ang)) + Math.abs(FS * Math.cos(ang));
       const bx2: Box = [mx - W * 0.4, my - H * 0.4, mx + W * 0.4, my + H * 0.4];
@@ -1180,13 +1493,24 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     if (!name || named.has(name) || done.has(name)) return;
     done.add(name);
     const q = s.ring[(i + 1) % s.ring.length];
-    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }, l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
     const n = sa > 0 ? { x: (q.y - p.y) / l, y: -(q.x - p.x) / l } : { x: -(q.y - p.y) / l, y: (q.x - p.x) / l };
-    const off = 6 * (scale / 500) + 2;
-    const [lx, ly] = at({ x: mid.x + n.x * off, y: mid.y + n.y * off });
     let ang = (-Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
     if (ang > 90) ang -= 180;
     if (ang < -90) ang += 180;
+    // In the street: a few millimetres of sheet off the edge whatever the scale, along it to where nothing is
+    // written. (It stood 8 m off at 1:500 and 14 m at 1:1 000, at the middle of the edge whatever was there: across
+    // a lane and over the houses the other side, through a storey number. Glanfield Street, Maroubra.)
+    const tl = shortStreetName(name).length * (FS * 0.62 + 0.5) + 2, rad = (ang * Math.PI) / 180;
+    const bw = Math.abs(tl * Math.cos(rad)) + Math.abs(FS * Math.sin(rad)), bh = Math.abs(tl * Math.sin(rad)) + Math.abs(FS * Math.cos(rad));
+    const spot = (f: number, offMm: number): { xy: [number, number]; bx: Box } => {
+      const xy = at({ x: p.x + (q.x - p.x) * f + (n.x * offMm) / mm, y: p.y + (q.y - p.y) * f + (n.y * offMm) / mm });
+      return { xy, bx: [xy[0] - bw * 0.4, xy[1] - bh * 0.4, xy[0] + bw * 0.4, xy[1] + bh * 0.4] };
+    };
+    const tries = [4.5, 6.5].flatMap((offMm) => [0.5, 0.35, 0.65, 0.2, 0.8].map((f) => spot(f, offMm)));
+    const set = tries.find((t) => clear(t.bx)) ?? spot(0.5, 4.5);
+    taken.push(set.bx);
+    const [lx, ly] = set.xy;
     out.push(`<text transform="translate(${lx.toFixed(2)},${ly.toFixed(2)}) rotate(${ang.toFixed(1)})" y="1" text-anchor="middle" font-size="${FS}" font-weight="700" letter-spacing="0.5" fill="${look.streetInk}">${esc(shortStreetName(name).toUpperCase())}</text>`);
   });
 
@@ -1198,29 +1522,65 @@ function planView(b: YieldBundle, s: YieldStudy, box: { x: number; y: number; w:
     .map((pc) => ({ pc, d: Math.min(...(pc.local[0] ?? []).map((p) => Math.min(...s.ring.map((q) => Math.hypot(p.x - q.x, p.y - q.y))))) }))
     .sort((p, q) => p.d - q.d);
   for (const { pc } of labelled) {
-    const lines = [`NO. ${numberLine(pc.numbers!)}`, [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
+    const lines = [`NO. ${numberLine(pc.numbers!)}`, opts.bw || zoneAreas ? '' : [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ')].filter(Boolean);
     const wMm = Math.max(lines[0].length * F1 * 0.66, (lines[1]?.length ?? 0) * F2 * 0.6) + 2.4, hMm = lines.length * LH + 0.8;
     const hw = wMm / 2 / mm, hh = hMm / 2 / mm;
     // The label's box, its corners and the middles of its sides, all inside the outline.
     const fits = (p: XY, rs: XY[][]) => [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]].every(([u, v]) => within({ x: p.x + u * hw, y: p.y + v * hh }, rs));
     const inLot = blds.filter((rg) => within(centre(rg), pc.local)).map((rg) => inFrame(rg)).filter((rg) => rg.length >= 3).sort((p, q) => ringArea(q) - ringArea(p));
-    let spot: XY | undefined;
+    // In its building where it fits, at its middle or a little along or up or down it; else on its lot. The first of them
+    // clear of what is already written (a separation's dimension beside the building took the one spot tried, and
+    // the lot lost its number: No. 46 at Maroubra).
+    const tries: { p: XY; onBuilding: boolean }[] = [];
     for (const rg of inLot) {
       const p = tierSpot([rg], [], [], hh, 0);
-      if (p && fits(p, [rg])) { spot = p; break; }
+      if (!p) continue;
+      for (const [dx, dy] of [[0, 0], [0.7 * hw, 0], [-0.7 * hw, 0], [1.3 * hw, 0], [-1.3 * hw, 0], [0, 2.2 * hh], [0, -2.2 * hh]]) { const q = { x: p.x + dx, y: p.y + dy }; if (fits(q, [rg])) tries.push({ p: q, onBuilding: true }); }
     }
-    spot ??= tierSpot(pc.shown, [], [], hh, 0);
-    if (!spot) continue;
-    const [px, py] = at(spot);
-    const bx2: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
-    if (!clear(bx2)) continue;
+    const onLot = tierSpot(pc.shown, [], [], hh, 0);
+    if (onLot) tries.push({ p: onLot, onBuilding: false });
+    const boxAt = (q: XY): Box => { const [qx, qy] = at(q); return [qx - wMm / 2, qy - hMm / 2, qx + wMm / 2, qy + hMm / 2]; };
+    // (clear of what is written by its whole box, the margin round its words included; failing that, by its words alone)
+    const tight = (bx: Box): Box => [bx[0] + 1.1, bx[1] + 0.3, bx[2] - 1.1, bx[3] - 0.3];
+    const set = tries.find((t) => clear(boxAt(t.p))) ?? tries.find((t) => clear(tight(boxAt(t.p))));
+    if (!set) continue;
+    const onBuilding = set.onBuilding, [px, py] = at(set.p), bx2 = boxAt(set.p);
     taken.push(bx2);
     const y0 = py - ((lines.length - 1) * LH) / 2 + F1 * 0.36;
-    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="#111111">${esc(t)}</text>`));
+    lines.forEach((t, i) => out.push(`<text x="${px.toFixed(2)}" y="${(y0 + i * LH).toFixed(2)}" text-anchor="middle" font-size="${i ? F2 : F1}" font-weight="${i ? 400 : 700}" fill="${opts.bw === 'black' && onBuilding ? '#ffffff' : '#111111'}">${esc(t)}</text>`));
+  }
+  // Where the zones are areas: each area's zone and height of building once, on the lot nearest its middle, under or
+  // over that lot's own number where there is room, else on the next lot out. An area is the lots of one zone and
+  // height that touch (a street parts two).
+  if (zoneAreas && !opts.plain) {
+    const lots = parcels.filter((pc) => !pc.site && pc.zone && pc.shown.length);
+    const said = (pc: (typeof lots)[number]) => [pc.zone, pc.hob ? hobLine(pc.hob) : ''].filter(Boolean).join(' · ');
+    const touch = (p: XY[][], q: XY[][]) => p.some((rp) => rp.some((u) => q.some((rq) => rq.some((v) => Math.hypot(u.x - v.x, u.y - v.y) < 1))));
+    const of = lots.map((_, i) => i);
+    const root = (i: number): number => (of[i] === i ? i : (of[i] = root(of[i])));
+    for (let i = 0; i < lots.length; i++) for (let j = i + 1; j < lots.length; j++) if (root(i) !== root(j) && said(lots[i]) === said(lots[j]) && touch(lots[i].local, lots[j].local)) of[root(i)] = root(j);
+    const areas = new Map<number, typeof lots>();
+    lots.forEach((pc, i) => { const r = root(i); (areas.get(r) ?? areas.set(r, []).get(r)!).push(pc); });
+    const FZ = 3;
+    for (const members of [...areas.values()].sort((p, q) => q.length - p.length)) {
+      const text = said(members[0]), wMm = text.length * FZ * 0.66 + 2.4, hMm = FZ + 1.4;
+      const mids = members.map((pc) => centre(pc.shown[0])), mid = centre(mids);
+      const order = members.map((pc, i) => ({ pc, d: Math.hypot(mids[i].x - mid.x, mids[i].y - mid.y) })).sort((p, q) => p.d - q.d);
+      place: for (const { pc } of order.slice(0, 10)) {
+        const [px, y0] = at(tierSpot(pc.shown, [], [], hMm / 2 / mm, 0) ?? centre(pc.shown[0]));
+        for (const dy of [4.4, -4.4, 8.8, -8.8, 0]) {
+          const py = y0 + dy, bx: Box = [px - wMm / 2, py - hMm / 2, px + wMm / 2, py + hMm / 2];
+          if (!clear(bx)) continue;
+          taken.push(bx);
+          out.push(`<text data-zone-label="1" x="${px.toFixed(2)}" y="${(py + FZ * 0.36).toFixed(2)}" text-anchor="middle" font-size="${FZ}" font-weight="700" letter-spacing="0.25" fill="#111111">${esc(text)}</text>`);
+          break place;
+        }
+      }
+    }
   }
 
   return {
-    svg: `<defs><clipPath id="plan-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}</defs><g clip-path="url(#plan-${id})"${opts.study ? ` font-family="${MAP_FONT}"` : ''}>${out.join('')}</g>`,
+    svg: `<defs><clipPath id="plan-${id}"><rect x="${box.x}" y="${box.y}" width="${box.w}" height="${box.h}"/></clipPath>${defs.join('')}${gradDefs.join('')}</defs><g clip-path="url(#plan-${id})"${opts.study ? ` font-family="${MAP_FONT}"` : ''}>${out.join('')}</g>`,
     scale, kerbs,
     // the zones the frame shows a lot of, for the key: the site's lot is left untinted, so its zone is not among them
     zones: [...new Set(parcels.filter((pc) => !pc.site && pc.zone && pc.shown.length).map((pc) => pc.zone!.trim().toUpperCase()))],
@@ -1408,7 +1768,7 @@ export function scenarioRows(b: YieldBundle, s: YieldStudy = yieldStudy(b)): Sce
     const l = s.lmr;
     out.push({
       id: 'lowMidRise', label: 'LOW AND MID-RISE HOUSING',
-      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide`,
+      note: `the Housing SEPP's low and mid-rise housing controls ${l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m from the ${l.name}`}: a residential flat building to ${fmt(l.hobM ?? 0, 1)} m and ${fmt(l.fsr ?? 0, 2)}:1 across the whole site, on a lot of at least ${LMR_LOW_RISE.minLotSqm} m² and ${LMR_LOW_RISE.minLotWidthM} m wide, drawn as one volume to its setbacks and its height`,
       ...fill(s.lmrY), ok: true,
     });
   }
@@ -1471,6 +1831,25 @@ const about = (gba: number, A: number) => (A && gba ? `≈ ${(gba / A).toFixed(1
  */
 /** How many lots the site is: one, or each lot of an amalgamation, as its description lists them. */
 const lotCount = (b: YieldBundle) => (b.lotDescription ?? '').split(';').filter((x) => x.trim()).length;
+/**
+ * The site's lots for the overview's figure, short enough for its column: one lot as the cadastre writes it; several
+ * as lot/plan, counted, and past the column's width the rest by their number ("3 lots: 1/DP965310, 10/DP1118472,
+ * 1/DP36591"). (Three lots written out in full ran into the controls beside them.)
+ */
+export function lotsShort(description: string | undefined, max = 46): string {
+  const lots = (description ?? '').split(';').map((x) => x.trim()).filter((x) => x && x !== '—');
+  if (!lots.length) return '—';
+  if (lots.length === 1 && lots[0].length <= max) return lots[0];
+  const short = lots.map((l) => { const m = /^lot\s+(\S+)\s*[-–]?\s*([A-Za-z]+)\s*(\d+)$/i.exec(l); return m ? `${m[1]}/${m[2].toUpperCase()}${m[3]}` : l; });
+  const head = lots.length > 1 ? `${lots.length} lots: ` : '';
+  let said = '';
+  for (let i = 0; i < short.length; i++) {
+    const next = said ? `${said}, ${short[i]}` : short[i], rest = short.length - i - 1;
+    if (said && (head + next + (rest ? ` + ${rest} more` : '')).length > max) return `${head}${said} + ${short.length - i} more`;
+    said = next;
+  }
+  return head + said;
+}
 const standsFloor = (s: YieldStudy, ex: { gbaSqm?: number } | undefined): { sqm: number; gba: boolean } | undefined =>
   (s.standing?.gfa ? { sqm: s.standing.gfa, gba: false } : ex?.gbaSqm ? { sqm: ex.gbaSqm, gba: true } : undefined);
 const storeyWord = (n: number) => `${n} ${n === 1 ? 'storey' : 'storeys'}`;
@@ -1534,13 +1913,13 @@ function keySwatches() {
     : look.buildings === 'white' ? `fill="#ffffff" stroke="${t.road}" stroke-width="0.3"` : `fill="#c2c2bc" stroke="#ffffff" stroke-width="0.3"`;
   const lot = look.lots === 'white' ? `fill="#eeeeea" stroke="#ffffff" stroke-width="0.3"` : `stroke="${t.road}" stroke-width="0.15" opacity="0.6"`;
   return {
-    site: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.08" stroke="${site}" stroke-width="0.3" stroke-dasharray="1,0.4"/>`,
-    use: (u: Use) => `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${useFill(u)}" stroke="#3a3a3a" stroke-width="0.15"/>`,
-    standing: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.standing}" stroke="#3a3a3a" stroke-width="0.15"/>`,
+    site: `<path d="M0.7,0.8H4.3V2.8H0.7Z" fill="none" stroke="${SITE_LINE.ink}" stroke-width="0.7" stroke-linejoin="round"/>`,
+    use: (u: Use) => `<path d="M0.6,0.7H4.4V2.9H0.6Z" fill="${useFill(u)}" stroke="${BUILT_LINE.ink}" stroke-width="${BUILT_LINE.key}"/>`,
+    standing: `<path d="M0.6,0.7H4.4V2.9H0.6Z" fill="${Y.standing}" stroke="${BUILT_LINE.ink}" stroke-width="${BUILT_LINE.key}"/>`,
     envelope: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${Y.envelope}" stroke-width="0.25" stroke-dasharray="0.8,0.5"/>`,
-    plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${site}" fill-opacity="0.05" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
+    plane: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="none" stroke="${site}" stroke-width="0.25" stroke-dasharray="1.2,0.6"/>`,
     neighbours: `<path d="M0.4,0.5H4.6V3.1H0.4Z" ${neighbours}/>`,
-    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${Y.future}" fill-opacity="0.6" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
+    future: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="${Y.futureEdge}" stroke-width="0.2" stroke-dasharray="0.7,0.4"/>`,
     kerb: `<line x1="0.3" y1="1.8" x2="4.7" y2="1.8" stroke="${Y.kerb}" stroke-width="0.3"/>`,
     tree: `<circle cx="2.5" cy="1.8" r="1.3" fill="${treeInks().fill}" stroke="${treeInks().edge}" stroke-width="0.2"/>`,
     zones: (cols: string[]) => cols.map((c, i, all) => { const w = 5 / all.length; return `<rect x="${(i * w).toFixed(2)}" y="0.3" width="${(w + 0.02).toFixed(2)}" height="3" fill="${c}"/>`; }).join(''),
@@ -1572,7 +1951,7 @@ const PATH_BASIS: Record<Scenario['id'], string> = {
   withinControls: 'This path keeps to the LEP\'s height of building and floor space ratio.',
   reshaped: 'This path keeps to the LEP\'s height of building and floor space ratio and the ADG\'s separations, in the office\'s feasible footprints: single-loaded 12 m deep, its gallery on the face with least sun; double-loaded 18 m along an east–west axis, its apartments running through to the north; double-loaded 22 m along a north–south axis, facing east and west; each 15 to 45 m long, a double-loaded one at least as long as it is deep, the taller to the south. Of the layouts read, it is the one with the most floor area whose apartments meet ADG 4A-1 and 4A-2.',
   tod: 'This path takes the Housing SEPP\'s transport oriented development controls (chapter 5, part 2): residential flat buildings in the residential and local centre zones to 22 m and 2.5:1, shop-top housing in the local centre and commercial zones to 24 m and 2.5:1, on a lot at least 21 m wide, the LEP\'s standard standing where it is more generous; 2% of the floor area is affordable housing in perpetuity, managed by a community housing provider, where the scheme is 2,000 m² or more.',
-  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
+  lowMidRise: 'This path takes the Housing SEPP\'s low and mid-rise housing controls (chapter 6): in a low density zone within 800 m of a nominated town centre, a residential flat building to 9.5 m and 0.8:1 on a lot of at least 500 m² and 12 m wide, the LEP\'s standard standing where it is more generous, drawn across the whole site, every lot of an amalgamation as one. It is drawn as its envelope, one volume: the land inside the setbacks (6 m from the street, the ADG\'s half separation from the other boundaries) to the whole of the height, three storeys of 3.1 m under the 9.5 m with a flat roof and no plant or lift overrun over it. The policy sets a height, not a storey count, and a DCP\'s wall height may hold a design to two. The floor area is the ratio\'s, less than the envelope holds, as an envelope leaves room for a building\'s courts and articulation; the plan inside it, its depth and its apartments\' sun are the design\'s to resolve. The 800 m is a walking distance, read here as the straight line to the centre\'s mapped edge, and the land the policy leaves out is not checked: the site\'s eligibility is to confirm with a planner.',
   affordableBonus: 'This path takes the Housing SEPP\'s in-fill affordable housing bonus (chapter 2, part 2, division 1); the site\'s eligibility is to confirm.',
   envelopeToHeight: 'This path sets the floor space ratio aside: it needs a clause 4.6 variation or a planning proposal.',
 };
@@ -1583,10 +1962,30 @@ function pathsOf(b: YieldBundle, s: YieldStudy): Path[] {
   return scenarioRows(b, s).map((sc) => ({ sc, y: sc.id === 'withinControls' && s.noScheme ? undefined : of[sc.id] }));
 }
 
-/** Whether a path has a spread of its own: what stands, and every path the study drew. */
-const drawnPath = (p: Path) => p.sc.id === 'standsToday' || !!p.y;
+/**
+ * Whether a path has a spread of its own: what stands, and every path the study drew a building on. A path that
+ * builds nothing has none (Z. 2026-11, on the spread of "within the controls" in a zone no building type is studied
+ * for, every figure a dash over the height plane alone: "if there is nothing, don't print it"). It keeps its row in
+ * the overview's table, with no page, and the overview says why.
+ */
+const drawnPath = (p: Path) => p.sc.id === 'standsToday' || (!!p.y && p.y.storeys > 0);
+/**
+ * The deck's pages in their order: the overview; each path's spread and, straight after it, the two pages it is
+ * tested on where it holds apartments to test; the controls and assumptions, the last. Each drawn path with its
+ * page and its test.
+ */
+function deckOrder(b: YieldBundle, s: YieldStudy, paths: Path[]): { paths: { p: Path; page: number; test?: { p: Path; ps: PathSun } }[]; last: number } {
+  const tested = testedPaths(b, s, paths);
+  let page = 1;
+  const out = paths.filter(drawnPath).map((p) => {
+    const test = tested.find((t) => t.p.sc.id === p.sc.id), at = ++page;
+    if (test) page += hasHomes(test.ps) ? 2 : 1;   // its shadow and separation, then its solar access where it holds apartments
+    return { p, page: at, ...(test ? { test } : {}) };
+  });
+  return { paths: out, last: page + 1 };
+}
 /** The page a path's spread takes (the overview is page 1), or none where it has no spread. */
-const pageOf = (paths: Path[], p: Path) => (drawnPath(p) ? paths.filter(drawnPath).indexOf(p) + 2 : 0);
+const pageOf = (b: YieldBundle, s: YieldStudy, paths: Path[], p: Path) => deckOrder(b, s, paths).paths.find((x) => x.p === p)?.page ?? 0;
 
 /** What stands, in the study's metres. */
 const standingOf = (b: YieldBundle, s: YieldStudy) => (b.existing ?? []).filter((e) => e.rings?.length)
@@ -1604,7 +2003,11 @@ const NOT_A_DESIGN = 'A feasibility study, not a design: the envelope follows th
 
 /** How the sun was read, for a path's sources line. */
 function sunNote(b: YieldBundle, s: YieldStudy): string {
-  return `Sun at mid winter (21 June, 9 am – 3 pm AEST, by the quarter hour): each storey's facade shared among its apartments in equal lengths, an apartment counting the time a metre of its facade has sun 1 m above its floor, ${sunRule(b).continuous ? 'in one unbroken run' : 'whether or not the hours run together'}; the neighbours at their recorded heights${s.future.buildings.length ? ', and for the built-out figures the future context in their place' : ''}, the ground flat, no trees. The shadow is the ground in sun today that the scheme puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
+  return `Sun at mid winter (21 June, 9 am – 3 pm AEST, by the quarter hour): each storey's facade shared among its apartments in equal lengths, an apartment counting the time a metre of its facade has sun 1 m above its floor, ${sunRule(b).continuous ? 'in one unbroken run' : 'whether or not the hours run together'}; the neighbours at their recorded heights${s.future.buildings.length ? ', and for the built-out figures the future context in their place' : ''}, the ground flat, no trees.`;
+}
+/** How the shadow was read, for the sources line of an option's shadow page. */
+function shadowNote(b: YieldBundle): string {
+  return `Shadows at mid winter (21 June), on the hour from 9 am to 3 pm AEST: every building's at its recorded height, two storeys where none is recorded, the ground flat, no trees. The shadow the scheme adds is the ground in sun today that it puts in shade${b.heritageItems ? '' : '; heritage items not measured (this bundle has no outlines of them)'}.`;
 }
 
 /** Whether what stands on the site has its height from the 3D meshes, and whether its footprint was traced from them. */
@@ -1629,7 +2032,7 @@ const footprintSources = (b: YieldBundle) => (b.buildingsSource === 'overture' ?
  * frame shows (the first page's plan at 1:500 holds two of the window's five); without it, the whole window's,
  * which the massing draws to its frame's every edge.
  */
-function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[]): LegendEntry[] {
+function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[], areas = false): LegendEntry[] {
   const count = new Map<string, number>();
   const tally = (zone?: string) => { if (zone) { const c = zone.trim().toUpperCase(); if (!shown || shown.includes(c)) count.set(c, (count.get(c) ?? 0) + 1); } };
   for (const pc of parcelsOf(b)) tally(pc.zone);
@@ -1638,6 +2041,9 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
   const box = 'M0.4,0.5H4.6V3.1H0.4Z', bb = { x0: 0, y0: 0, x1: 5, y1: 3.6 };
   return [...count.entries()].sort((p, q) => q[1] - p[1]).slice(0, 6).map(([code]) => code).sort((p, q) => zoneOrder(p) - zoneOrder(q))
     .flatMap((code) => {
+      // (a zone's area over the first page's photograph: a line of its colour round it)
+      const edge = areas ? zoneLine(code, look) : null;
+      if (edge) return [{ swatch: `<path d="${box}" fill="none" stroke="${edge}" stroke-width="0.45"/>`, label: names.get(code) ? `${code} ${names.get(code)}` : code }];
       const lf = lotFill(code, look), ink = massing ? zoneInk(code, look) : null;
       if (!lf && !ink) return [];
       const swatch = (lf ? fillShape(box, bb, lf.fill) : '') + (ink ? `<path d="M1.6,1.1H3.4V2.5H1.6Z" fill="${ink}"/>` : '') +
@@ -1647,7 +2053,35 @@ function zoneEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: s
     });
 }
 
-/** The key to the massing and the plan of a path's spread. */
+/**
+ * The key to the neighbours' lines on a plan or in a white model: the zones, each by its line; or (Canary) the storeys'
+ * bands the town holds, each by its colour as the report's built form page keys them.
+ */
+function townEntries(b: YieldBundle, look: DeckLook, massing: boolean, shown?: string[]): { entries: LegendEntry[]; words: string } {
+  if (!zoneEdgesOn()) return { entries: [], words: '' };
+  if (zoneTone(look) !== 'bands') { const entries = zoneEntries(b, look, massing, shown, true); return { entries, words: entries.length ? ', each outlined in its zone\'s colour' : '' }; }
+  const has = new Set(b.context.filter((cb) => cb.known && cb.heightM > 0).map((cb) => heightBandOf(cb.heightM)));
+  const M = massingInks();
+  const entries = HEIGHT_BANDS.flatMap((bd, i) => (has.has(i) ? [{
+    swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="${lineOf(M.bands[i])}" stroke-width="0.45"/>${massing ? `<path d="M2.6,0.75H4.35V2.85H2.6Z" fill="${M.bands[i]}"/>` : ''}`,
+    label: /storeys/.test(bd.label) ? bd.label : `${bd.label} storeys`,
+  }] : []));
+  return { entries, words: entries.length ? ', each outlined in the colour of its storeys, as the report\'s built form page' : '' };
+}
+
+/** How much round the site a whole page's plan takes in, as a multiple of the site's extent: the overview's and each path's (its shadow's), so the deck's plans are one scale. */
+const PLAN_ROOM = 2.4;
+
+/** The ground a plan of the site frames in a box of these millimetres, at the round scale planView takes for it: the study's metres. */
+function planFrame(s: YieldStudy, room: number, wMm: number, hMm: number): { x0: number; y0: number; x1: number; y1: number } {
+  const xs = s.ring.map((p) => p.x), ys = s.ring.map((p) => p.y);
+  const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys);
+  const scale = [100, 200, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000].find((sc) => (w * room * 1000) / sc <= wMm && (h * room * 1000) / sc <= hMm) ?? 5000;
+  const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2, fx = (wMm / 2) * (scale / 1000), fy = (hMm / 2) * (scale / 1000);
+  return { x0: cx - fx, y0: cy - fy, x1: cx + fx, y1: cy + fy };
+}
+
+/** The key to the massing of a path's spread. */
 function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined, standing: boolean, kerbs: boolean): LegendEntry[] {
   const KEY = keySwatches();
   const out: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }];
@@ -1655,28 +2089,33 @@ function schemeLegend(b: YieldBundle, s: YieldStudy, y: YieldResult | undefined,
   for (const u of ['residential', 'retail', 'commercial'] as Use[]) if (y?.tiers.some((t) => t.use === u)) out.push({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` });
   if (y?.tiers.length) out.push({ swatch: KEY.envelope, label: 'Envelope of each tier' });
   if (s.hob?.metres) out.push({ swatch: KEY.plane, label: 'The LEP\'s height of building plane' });
-  const look = deckLook();
-  const zoneInks = [...new Set(b.context.map((cb) => zoneInk(cb.controls?.zone, look)).filter((c): c is string => !!c))].slice(0, 5);
-  // Heron's line drawings: the neighbours white in their outline, no zone colours to key (each lot's zone is written on the plan)
-  const lineModel = look.id === 'heron';
-  out.push({ swatch: KEY.zones(zoneInks.length ? zoneInks : [massingInks().noHeight]), label: `Neighbours at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''}), ${lineModel ? 'white in outline' : 'each in its zone\'s colour'}; dashed: not recorded` });
-  if (!lineModel) out.push(...zoneEntries(b, look, true));
-  if (s.future.buildings.length) out.push({ swatch: KEY.future, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
+  // the town a white model: the neighbours white at their heights, each in a line of its zone's colour, the zones keyed by their lines
+  const town = townEntries(b, deckLook(), true), zoned = town.entries;
+  out.push({ swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
+    label: `Neighbours in white at their heights (${footprintSources(b)}${b.mesh?.heights ? ', the 3D meshes where neither has one' : ''})${town.words}; dashed: not recorded` });
+  out.push(...zoned);
+  if (s.future.buildings.length) out.push({ swatch: `<path d="M0.6,0.7H4.4V3H0.6Z" fill="#ffffff" fill-opacity="0.5" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`, label: `${FUT_LABEL}${b.capacity ? ', where the capacity study finds development potential' : ''}` });
   if (kerbs) out.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
-  if (b.trees?.length) out.push({ swatch: KEY.tree, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
+  if (b.trees?.length) out.push({ swatch: `<circle cx="2.5" cy="1.8" r="1.3" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/>`, label: b.trees.some((t) => t.source !== 'aerial') ? 'Trees: crowns read off the aerial, recorded where OpenStreetMap or the council has them' : 'Trees, crowns read off the aerial' });
   return out;
 }
 
-/** The two drawings of a path's right page: its massing over its plan. */
+/**
+ * The drawing of a path's right page: its massing, the whole page, framed close (FOCUS_FULL_M of town round the
+ * site). It stood over the path's plan, in the page's upper half. Z. 2026-11: "make the isometry here for the full
+ * half page and remove the plan: the plan is visible in shadow"; then "keep the rule with full isometry everywhere;
+ * if there is nothing interesting for compliance, don't show the shadow or plan at all". A path's plan is the page
+ * after it, with its shadow (complianceSheets), for every path with a massing to test.
+ * The town is a white model, as the solar access views draw it: no zone's colour in 3D, the scheme and what stands
+ * the only colours (Z. 2026-11, on the overview's grey aerial beside a massing in the zones' reds and blues: "these
+ * two are not matching by style or colour … for the isometry probably don't show the zoning in 3D, just white
+ * neighbour buildings"). The zones are the overview's.
+ */
 function schemeFigures(b: YieldBundle, s: YieldStudy, scheme: Scheme, id: string, massingNote: string, massingTitle = 'Indicative massing'): { html: string; kerbs: boolean } {
-  // The massing over the top half, its neighbours out to the page's edges; the plan under it, to the edges and the foot.
-  const AXO_H = 150, PLAN_TOP = AXO_H, PLAN_H = PAGE_H - PLAN_TOP;
-  const planName = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, scheme.y?.tiers.length ? 'tiers numbered as in the schedule' : ''];
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PLAN_H }, scheme, id, { inset: 6, keepOut: [labelBox(planName(5000))] });
   return {
-    html: bleedFigure(0, AXO_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: AXO_H - LABEL_IN - 11 }, scheme, id)) + mapLabel(0, [massingTitle, massingNote]) +
-      bleedFigure(PLAN_TOP, PLAN_H, plan.svg) + mapLabel(PLAN_TOP, planName(plan.scale)),
-    kerbs: plan.kerbs.length > 0,
+    html: bleedFigure(0, PAGE_H, axonometric(b, s, { x: 2, y: LABEL_IN + 9, w: PAGE_W - 4, h: PAGE_H - LABEL_IN - 11 }, { ...scheme, focusM: scheme.focusM ?? FOCUS_FULL_M, mono: true }, id)) + mapLabel(0, [massingTitle, massingNote]),
+    // (the massing draws the bundle's kerb lines; it works none out)
+    kerbs: (b.kerbs ?? []).length > 0,
   };
 }
 
@@ -1706,7 +2145,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
   const front = s.frontageLengths[0];
   const figs = zFigures([
     ['site area, cadastre', A ? area(A) : '—'],
-    ['lot', b.lotDescription || '—'],
+    ['lot', lotsShort(b.lotDescription)],
     ['frontage', front ? `${shortStreetName(front.name)} ${fmt(front.lengthM, 1)} m${s.frontageLengths.length > 1 ? ` + ${s.frontageLengths.length - 1} more` : ''}` : 'none found'],
   ], [
     ['zone', [c.zoneCode, c.zonePurpose].filter(Boolean).join(' ') || 'not mapped'],
@@ -1719,14 +2158,18 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
       cls: p.sc.id === 'withinControls' && p.y ? 'hi' : undefined,
       cells: [esc(SCENARIO_TITLE[p.sc.id]), esc(p.sc.storeys ?? '—'), p.sc.heightM ? esc(m1(p.sc.heightM)) : '—',
         esc(p.y?.gfa ? fmt(Math.round(p.y.gfa)) : p.sc.id === 'standsToday' && standsFloor(s, ex) ? `≈ ${fmt(Math.round(standsFloor(s, ex)!.sqm))}` : '—'), esc(p.sc.fsr ?? '—'), esc(p.sc.units ?? '—'), esc(p.sc.parking ?? '—'), okMark(p.sc.ok),
-        pageOf(paths, p) ? String(pageOf(paths, p)).padStart(2, '0') : '—'],
+        pageOf(b, s, paths, p) ? String(pageOf(b, s, paths, p)).padStart(2, '0') : '—'],
     })));
   const blocks = [zBlock('The site', figs, 'The controls'), zBlock('The paths', table), ...pathBars(b, s, paths)];
   const name = (scale: number) => ['The site and its neighbours', `1:${fmt(scale).replace(',', ' ')}`, 'their numbers, zones and heights'];
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: 2.4, inset: 6, keepOut: [labelBox(name(5000))], aerial: true });
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, {}, 'site', { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], aerial: true });
   const right = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
   const KEY = keySwatches();
-  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: KEY.neighbours, label: 'Buildings round about' }, { swatch: KEY.lot, label: 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones)];
+  const areasLook = deckLook().id !== 'heron';
+  // (the buildings as the photograph shows them, each in a white line: no fill of a colour in the key either)
+  const onPhoto = !!photoOf(b) && deckLook().id !== 'heron';
+  const legend: LegendEntry[] = [{ swatch: KEY.site, label: 'The site' }, { swatch: onPhoto ? `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#9a9a9a" stroke="#ffffff" stroke-width="0.35"/>` : KEY.neighbours, label: 'Buildings round about' },
+    { swatch: KEY.lot, label: areasLook ? 'Lot boundaries, NSW cadastre, each with its street number' : 'Lot boundaries, NSW cadastre, each lot tinted by its zone' }, ...zoneEntries(b, deckLook(), false, plan.zones, areasLook)];
   if (plan.kerbs.length) legend.push({ swatch: KEY.kerb, label: 'Kerb line, indicative' });
   const exceeds = ex?.gbaSqm && ex.gbaSqm > Math.max(...paths.filter((p) => p.y && p.sc.id !== 'rebuiltAsStands').map((p) => p.y!.gba), 0);
   const narrative = s.noScheme ? brief([noSchemeSentence(b, s), ex?.gbaSqm ? `What stands today holds about ${area(ex.gbaSqm)}.` : ''], 560) : brief([
@@ -1750,7 +2193,7 @@ function overviewSlide(b: YieldBundle, s: YieldStudy, paths: Path[]): Slide {
 }
 
 /** A path's spread: its figures, its controls, its schedule and its mix; its massing over its plan. */
-function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: number): Slide {
+function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: number, planOn?: number): Slide {
   const y = p.y!, a = y.assumptions, c = b.controls, A = b.siteAreaSqm ?? 0;
   const id = p.sc.id;
   const apartments = y.units.total > 0;
@@ -1777,13 +2220,12 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
     if (todPath.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (TOD)', esc(`${TOD_SEPP.minLotWidthM} m`), esc(`${fmt(todPath.lotWidthM, 1)} m`), okMark(todPath.wideEnough ?? null)] });
     ctl.push({ cells: ['Affordable housing (TOD)', esc('2% of GFA from 2,000 m²'), esc(y.gfa >= TOD_SEPP.affordableFromSqm ? `${area(y.gfa * TOD_SEPP.affordableShare)}, in perpetuity` : 'not asked under 2,000 m²'), okMark(true)] });
   } else if (id === 'lowMidRise' && s.lmr) {
-    // the low and mid-rise housing standards, or the LEP's where more generous, and the lot they ask for
+    // the low and mid-rise housing standards, or the LEP's where more generous, and the lot they ask for: four rows
+    // (the ratio with its floor area, the lot's size with its width), so the page's tables stay clear of its key
     const l = s.lmr, lim = l.hobM ?? 0, ratioCap = l.fsr ?? 0;
     ctl.push({ cells: ['Height of building', esc(`${m1(lim)} (LMR${s.hob?.metres && s.hob.metres >= lim - 1e-6 ? ', the LEP\'s' : ''})`), esc(y.heightM ? `${m1(Math.round(y.heightM * 10) / 10)}, ${storeyWord(y.storeys)}` : '—'), okMark(y.heightM ? y.heightM <= lim + 1e-6 : null)] });
-    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (LMR)`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
-    if (A) ctl.push({ cells: ['Gross floor area', esc(area(ratioCap * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
-    if (A) ctl.push({ cells: ['Lot size (LMR)', esc(area(LMR_LOW_RISE.minLotSqm)), esc(`${area(A)}, the whole site`), okMark(l.bigEnough ?? null)] });
-    if (l.lotWidthM !== undefined) ctl.push({ cells: ['Lot width (LMR)', esc(`${LMR_LOW_RISE.minLotWidthM} m`), esc(`${fmt(l.lotWidthM, 1)} m`), okMark(l.wideEnough ?? null)] });
+    ctl.push({ cells: ['Floor space ratio', esc(`${ratioCap.toFixed(2)}:1 (LMR)${A ? ` · ${area(ratioCap * A)}` : ''}`), esc(`${ratio(y.gfa, A)}${y.gfa ? ` · ${area(y.gfa)}` : ''}`), okMark(y.gfa ? y.gfa <= ratioCap * A + 1 : null)] });
+    if (A) ctl.push({ cells: ['Lot (LMR)', esc(`${area(LMR_LOW_RISE.minLotSqm)}, ${LMR_LOW_RISE.minLotWidthM} m wide`), esc(`${area(A)}${l.lotWidthM !== undefined ? `, ${fmt(l.lotWidthM, 1)} m wide` : ''}`), okMark(l.bigEnough === undefined ? null : l.bigEnough && l.wideEnough !== false)] });
     ctl.push({ cells: ['Town centre (LMR)', esc('within 800 m walking'), esc(l.distanceM <= 0 ? `in the ${l.name}` : `${fmt(l.distanceM)} m, straight line`), okMark(null)] });
   } else {
   if (s.hob) {
@@ -1795,12 +2237,16 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
   if (c.fsr) ctl.push({ cells: ['Floor space ratio', esc(`${c.fsr.toFixed(2)}:1${k > 1 ? ` + ${pct}%` : ''}`), esc(ratio(y.gfa, A)), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   if (c.fsr && A) ctl.push({ cells: ['Gross floor area', esc(area(c.fsr * k * A)), esc(y.gfa ? area(y.gfa) : '—'), okMark(y.gfa ? y.gfa <= c.fsr * k * A + 1 : null)] });
   }
-  if (c.minLotSizeSqm) ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
+  // (the low and mid-rise path's lot is in its own row above: the LEP's minimum is a subdivision's)
+  if (c.minLotSizeSqm && id !== 'lowMidRise') ctl.push({ cells: ['Minimum lot size', esc(area(c.minLotSizeSqm)), esc(A ? area(A) : '—'), okMark(A ? A >= c.minLotSizeSqm : null)] });
   if (apartments) {
-    const deepest = id === 'reshaped' && s.reshaped ? Math.max(...s.reshaped.buildings.map((bd) => bd.depthM)) : 0;
+    const laid = id === 'reshaped' ? s.reshaped : undefined;
+    const deepest = laid ? Math.max(...laid.buildings.map((bd) => bd.depthM)) : 0;
     ctl.push(id === 'rebuiltAsStands'
       ? { cells: ['ADG 2E building depth', '12–18 m', 'as it stands: to test', okMark(null)] }
-      : id === 'reshaped'
+      : id === 'lowMidRise'
+        ? { cells: ['ADG 2E building depth', '12–18 m', 'one envelope: the plan in it to design', okMark(null)] }
+      : laid
         ? { cells: ['ADG 2E building depth', '12–18 m', esc(deepest > 18 ? `${fmt(deepest)} m, apartments facing east and west` : `${fmt(deepest)} m`), okMark(deepest > 18 ? null : true)] }
       : { cells: ['ADG 2E building depth', '12–18 m', esc(y.tiers.some((t) => t.held === 'depth') ? `plates held to ${m1(a.maxDepth)}` : 'within the depth'), okMark(true)] });
     const ds = y.adg.deepSoil;
@@ -1841,8 +2287,9 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
       ? brief([`With ${pct}% more height and floor space ratio for 15% affordable housing, held for 15 years, the Housing SEPP's in-fill bonus gives ${what}.`,
         `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than within the controls, about ${fmt(Math.round(y.units.total * 0.15))} of them affordable. Eligibility to confirm.`])
       : id === 'lowMidRise' && s.lmr
-        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds a residential flat building of ${what}.`,
-          `${s.base.gfa > 0 ? `That is ${area(y.gfa - s.base.gfa)} more than the LEP's controls give` : `${c.zoneCode ?? 'The zone'} takes no apartment building under the LEP alone`}${s.standing?.gfa ? `; what stands holds about ${area(s.standing.gfa)}` : ''}. The policy's 800 m is a walking distance and its excluded land is not checked: eligibility to confirm.`])
+        ? brief([`Under the Housing SEPP's low and mid-rise housing controls, ${s.lmr.distanceM <= 0 ? `in the ${s.lmr.name}` : `${fmt(s.lmr.distanceM)} m from the ${s.lmr.name}`}, the whole site${lotCount(b) > 1 ? `, its ${lotCount(b)} lots as one,` : ''} holds one volume to its setbacks and its height: ${what}.`,
+          y.governs === 'fsr' ? `The floor space ratio governs: the envelope would hold ${area(y.gfaCapacity)}, and the ${(s.lmr.fsr ?? 0).toFixed(2)}:1 allows ${pctOf(y.gfa, y.gfaCapacity)} of it.` : 'The envelope governs: the floor space ratio is not reached.',
+          `${s.standing?.gfa ? `What stands holds about ${area(s.standing.gfa)}. ` : ''}Eligibility to confirm.`], 680)
       : id === 'tod' && s.tod
         ? brief([`Under the Housing SEPP's transport oriented development controls in the ${s.tod.name} TOD area, the site holds ${what}.`,
           `That is ${area(y.gfa - s.base.gfa)}${y.units.total > s.base.units.total ? ` and ${fmt(y.units.total - s.base.units.total)} apartments` : ''} more than the LEP's controls give${y.gfa >= TOD_SEPP.affordableFromSqm ? `, ${area(y.gfa * TOD_SEPP.affordableShare)} of it affordable housing in perpetuity` : ''}.`])
@@ -1858,7 +2305,7 @@ function schemeSlide(b: YieldBundle, s: YieldStudy, p: Path, n: number, last: nu
         c.fsr ? `That is ${area(y.gfa - s.base.gfa)} over the LEP's ${c.fsr.toFixed(2)}:1: the case a clause 4.6 variation or a planning proposal has to carry.` : '']);
   return { id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}`, title: SCENARIO_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow(blocks) + figures.html, full: true, narrative, accent: id === 'envelopeToHeight' ? inks().F.deep : inks().accent,
-    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${s.tod?.regime === 'alternative' && (id === 'withinControls' || id === 'reshaped') ? ` The LEP's height and floor space ratio here are ${s.tod.alternative!.council}'s alternative TOD controls${s.tod.alternative!.from ? `, in force from ${s.tod.alternative!.from}` : ''}.` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
+    legend: schemeLegend(b, s, y, false, figures.kerbs), sources: `${NOT_A_DESIGN} ${PATH_BASIS[id]}${s.tod?.regime === 'alternative' && (id === 'withinControls' || id === 'reshaped') ? ` The LEP's height and floor space ratio here are ${s.tod.alternative!.council}'s alternative TOD controls${s.tod.alternative!.from ? `, in force from ${s.tod.alternative!.from}` : ''}.` : ''}${planOn ? ` Its plan is on page ${String(planOn).padStart(2, '0')}, with its shadow and its separations.` : ''} Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}${treesNote(b)}` };
 }
 
 /** The neighbours' future, as the keys name it. */
@@ -1867,17 +2314,19 @@ const FUT_LABEL = 'Neighbours\' future: a feasible footprint on each lot (or lot
 const separationMark = (r: SeparationReading) => (r.status === 'clear' ? true : r.status === 'blank' ? null : false);
 /** The worse of a neighbour's two readings, today's and built out. */
 const worseReading = (r: SeparationRow): SeparationReading => (r.future && r.future.distanceM - r.future.band.between < r.today.distanceM - r.today.band.between ? r.future : r.today);
-/** The paths the compliance sheet tests: those the study drew that hold apartments, each with its sun, shadow and separations. */
-// (What stands today is tested first and always, where anything stands with a height: the current structures'
-// compliance before any designed massing's (Z. 2026-11). The path that rebuilds what stands is the same massing, so
-// it has no sheet of its own beside it.)
-const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) => {
-  const standsTested = !!pathSun(b, s, 'standsToday')?.apartments?.total;
-  return paths
-    .map((p): Path => (p.sc.id === 'standsToday' ? { ...p, y: s.standing } : p))
-    .filter((p) => !(standsTested && p.sc.id === 'rebuiltAsStands'))
-    .filter((p) => p.y && pathSun(b, s, p.sc.id)?.apartments?.total).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
-};
+/**
+ * The paths the compliance pages test: every path the study drew a massing for, each with its sun, shadow and
+ * separations. What stands today is tested first and always, where anything stands with a height (Z. 2026-11: the
+ * current structures' compliance before any designed massing's). Every scenario with a spread has its pages, the
+ * path that rebuilds what stands too, though its massing is what stands (Z. 2026-11: "do the compliance sheets for
+ * every scenario produced … even for this"), and a scheme with no apartments, whose shadow and separations are
+ * tested though no apartment's sun is.
+ */
+const testedPaths = (b: YieldBundle, s: YieldStudy, paths: Path[]) => paths
+  .map((p): Path => (p.sc.id === 'standsToday' ? { ...p, y: s.standing } : p))
+  .filter((p) => p.y && p.y.storeys > 0 && pathSun(b, s, p.sc.id)?.shadow).map((p) => ({ p, ps: pathSun(b, s, p.sc.id)! }));
+/** Whether a tested path holds apartments: its solar access has a page of its own, after its shadow's. */
+const hasHomes = (ps: PathSun) => (ps.apartments?.total ?? 0) > 0;
 /** A path's added shadow in a few words: "4 lots, 1 heritage item", or "none". */
 function shadowShort(ps: PathSun): string {
   const sh = ps.shadow!;
@@ -1897,11 +2346,15 @@ const figureAt = (left: number, top: number, w: number, h: number, inner: string
 const labelAt = (left: number, top: number, inset: number, parts: string[]) =>
   `<div class="abs maplabel" style="left:${left + inset}mm;top:${top + inset}mm">${esc(parts.filter(Boolean).join(' · '))}</div>`;
 
-/** A compliance sheet's title: the option's name, short enough to stand on one line with the word. */
-const COMPLIANCE_TITLE: Record<Scenario['id'], string> = {
-  standsToday: 'Stands today: compliance', rebuiltAsStands: 'Rebuilt as it stands: compliance', withinControls: 'Within the controls: compliance', reshaped: 'Reshaped to comply: compliance', tod: 'TOD controls: compliance', lowMidRise: 'Low and mid-rise housing: compliance',
-  affordableBonus: 'Affordable bonus: compliance', envelopeToHeight: 'Envelope to the height: compliance',
+/** An option's name on its two test pages, short enough to stand on one line with the page's own. */
+const TEST_NAME: Record<Scenario['id'], string> = {
+  standsToday: 'Stands today', rebuiltAsStands: 'Rebuilt to what stands', withinControls: 'Within the controls', reshaped: 'Reshaped to comply', tod: 'TOD controls', lowMidRise: 'Low and mid-rise',
+  affordableBonus: 'Affordable bonus', envelopeToHeight: 'Envelope to the height',
 };
+/** The two pages an option is tested on: what each is called after the option's name, and how its id ends. */
+const TEST_PAGE = { solar: { title: 'solar access', id: 'solar_access' }, shadow: { title: 'shadow', id: 'shadow_and_separation' } } as const;
+/** Whether a page is one of an option's test pages, by its id. */
+export const isTestPage = (id: string, kind?: keyof typeof TEST_PAGE): boolean => (kind ? [kind] : (['solar', 'shadow'] as const)).some((k) => id.endsWith(`_${TEST_PAGE[k].id}`));
 
 /** The faces of an option grouped by the way they look (the outside's and a courtyard's apart): their area, and their hours, averaged by area, today and built out. */
 function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: string; bearing: number; areaSqm: number; average: number; share: number; averageFuture?: number; shareFuture?: number }[] {
@@ -1918,32 +2371,33 @@ function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: stri
       if (c.hoursFuture !== undefined) { g.future = true; g.hf += area * c.hoursFuture; if (c.hoursFuture >= hours - 1e-9) g.okf += area; }
     }
   }
-  // the roofs, together
-  if (ps.roofs.length) {
-    const g = { courtyard: false, dir: 'roof', bearing: 999, a: 0, h: 0, ok: 0, hf: 0, okf: 0, future: false };
-    for (const r of ps.roofs) {
-      g.a += r.areaSqm; g.h += r.areaSqm * r.hours; if (r.hours >= hours - 1e-9) g.ok += r.areaSqm;
-      if (r.hoursFuture !== undefined) { g.future = true; g.hf += r.areaSqm * r.hoursFuture; if (r.hoursFuture >= hours - 1e-9) g.okf += r.areaSqm; }
-    }
-    groups.set('roof', g);
-  }
   // the outside's faces of a twentieth of the whole or more: a corner's sliver says nothing a face does not
-  const total = [...groups.values()].filter((g) => g.dir !== 'roof').reduce((t, g) => t + g.a, 0);
-  return [...groups.values()].filter((g) => g.a > 0 && (g.courtyard || g.dir === 'roof' || g.a >= 0.05 * total))
+  const total = [...groups.values()].reduce((t, g) => t + g.a, 0);
+  return [...groups.values()].filter((g) => g.a > 0 && (g.courtyard || g.a >= 0.05 * total))
     .sort((p, q) => Number(p.courtyard) - Number(q.courtyard) || p.bearing - q.bearing)
     .map((g) => ({ courtyard: g.courtyard, dir: g.dir, bearing: g.bearing, areaSqm: g.a, average: g.h / g.a, share: g.ok / g.a, ...(g.future ? { averageFuture: g.hf / g.a, shareFuture: g.okf / g.a } : {}) }));
 }
 
 /**
- * An option's compliance sheet: its envelope against the assessment criteria, kept off the yield's own pages, one
- * sheet an option. On the left the criteria with a mark each (overshadow impact, solar access, building separation,
- * yield); the sun on each facade, by the way it looks; each building near and its separation, today and built out;
- * and, on the first sheet, how each criterion is read. On the right the massing from the street corner and from the
- * opposite one, so every face is seen, each cell of its facades coloured by its hours of sun; and the plan of its
- * shadow at 9 am, noon and 3 pm, the land it shades and each separation drawn as a dimension.
+ * An option's compliance, on the two pages straight after its own spread (Z. 2026-11: "place the compliance sheet
+ * right after the scenario page", "split solar and shadow with setbacks to two different pages". It was one sheet an
+ * option, every option's after the last path: the two massings 105 mm wide each over a plan 147 mm high.)
+ *
+ *  - Shadow and separation, the first of the two ("shadow will be page two"): overshadowing (3B-2) and building
+ *    separation (3F-1) with a mark each; the shadow it adds, by the land it falls on; each building near and its
+ *    separation, today and built out. On the right, the whole page, the option's plan: its shadow at 9 am, noon and
+ *    3 pm, the land it shades and each separation a dimension. (The option's own spread, the page before, draws its
+ *    massing alone for it: schemeFigures.)
+ *  - Solar access: ADG 4A's criteria with a mark each, and the yield; the sun on each facade, by the way it looks;
+ *    the apartments storey by storey. On the right the massing from the street corner and, under it, from the
+ *    opposite one, so every face is seen, each cell of its facades coloured by its hours of sun.
+ *
+ * On the first option tested each criterion says in full what it asks.
  */
-function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): Slide {
-  const { p, ps } = entry, id = p.sc.id, ap = ps.apartments!, sh = ps.shadow!, f = ap.future;
+function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: PathSun }, n: number, last: number, first: boolean): Slide[] {
+  // (a scheme with no apartments has its shadow page alone, the yield's criterion on it: `homes` says which)
+  const { p, ps } = entry, id = p.sc.id, homes = hasHomes(ps), sh = ps.shadow!;
+  const ap: ApartmentSun = ps.apartments ?? { hoursRequired: sunRule(b).hours, continuous: false, units: [], total: 0, meeting: 0, none: 0 }, f = ap.future;
   const rule = sunRule(b), h = rule.hours, unbroken = rule.continuous ? ' unbroken' : '';
   const meets = (k: number) => k >= 0.7 * ap.total - 1e-9, fewNone = (k: number) => k <= 0.15 * ap.total + 1e-9;
   const count = (k: number) => `${pctOf(k, ap.total)} (${k} of ${ap.total})`;
@@ -1962,104 +2416,244 @@ function complianceSheet(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: Pa
         : tod.regime === 'deferred' ? `in the ${tod.name} TOD area, its controls deferred` : `in the ${tod.name} accelerated precinct, by its own maps`;
   const asks = (text: string) => (first ? text : undefined);
   const builtOut = asks('Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR');
-  const tests: TRow[] = [
-    { cells: ['Overshadow impact', 'minimised at mid winter (3B-2)', esc(shadowShort(ps) === 'none' ? 'adds none' : `shades ${shadowShort(ps)}${sh.homes.fallBelow ? `; ${sh.homes.fallBelow} below ${sh.homes.hoursRequired} h` : ''}`), okMark(shadowOk(ps))],
-      note: asks('ADG 3B-2: overshadowing of reserves, heritage items and homes minimised at mid winter; a shadow added takes the dash') },
+  const yieldTest: TRow = { cells: ['Yield', esc(most ? `${area(most)} most allowed` : 'no FSR mapped'), esc(`${area(ps.y.gfa)}${most ? ` · ${Math.round((100 * ps.y.gfa) / most)}%` : ''}`), okMark(most ? p.sc.ok : null)],
+    note: asks(`The most floor area allowed: the LEP's floor space ratio by the site area${todNote ? `; ${todNote}` : ''}`) };
+  const solarTests: TRow[] = [
     { cells: [`Solar access, ${h} h`, esc(`70% of apartments${unbroken ? ', unbroken' : ''} (4A-1)`), esc(count(ap.meeting)), okMark(meets(ap.meeting))],
       note: asks(`ADG 4A-1: ${h} hours of direct sun${unbroken}, 9 am – 3 pm at mid winter, ${rule.where}`) },
     ...(f ? [{ cells: ['…neighbours built out', '70%', esc(count(f.meeting)), okMark(meets(f.meeting))], note: builtOut }] : []),
     { cells: ['Solar access, none', 'at most 15% (4A-2)', esc(count(ap.none)), okMark(fewNone(ap.none))],
       note: asks('ADG 4A-2: apartments with no direct sun, 9 am – 3 pm at mid winter') },
     ...(f && f.none !== ap.none ? [{ cells: ['…neighbours built out', 'at most 15%', esc(count(f.none)), okMark(fewNone(f.none))] }] : []),
-    { cells: ['Building separation', '12 / 18 / 24 m by storeys (3F-1)', esc([sepToday === 'none near' ? 'none near today' : `${sepToday} today`, sepLater].filter(Boolean).join('; ')), okMark(separationOk(ps))],
-      note: asks('ADG 3F-1: habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)') },
-    { cells: ['Yield', esc(most ? `${area(most)} most allowed` : 'no FSR mapped'), esc(`${area(ps.y.gfa)}${most ? ` · ${Math.round((100 * ps.y.gfa) / most)}%` : ''}`), okMark(most ? p.sc.ok : null)],
-      note: asks(`The most floor area allowed: the LEP's floor space ratio by the site area${todNote ? `; ${todNote}` : ''}`) },
+    yieldTest,
   ];
-  const testTable = ytable([{ head: 'Criterion', w: '38mm' }, { head: 'Asked', w: '48mm' }, { head: 'This option' }, { head: '', w: '5mm' }], tests, true);
+  const shadowTests: TRow[] = [
+    { cells: ['Overshadow impact', 'minimised at mid winter (3B-2)', esc(shadowShort(ps) === 'none' ? 'adds none' : `shades ${shadowShort(ps)}${sh.homes.fallBelow ? `; ${sh.homes.fallBelow} below ${sh.homes.hoursRequired} h` : ''}`), okMark(shadowOk(ps))],
+      note: asks('ADG 3B-2: overshadowing of reserves, heritage items and homes minimised at mid winter; a shadow added takes the dash') },
+    { cells: ['Building separation', '12 / 18 / 24 m by storeys (3F-1)', esc([sepToday === 'none near' ? 'none near today' : `${sepToday} today`, sepLater].filter(Boolean).join('; ')), okMark(separationOk(ps))],
+      note: asks(`ADG 3F-1: habitable to habitable 12, 18, 24 m; to non-habitable 9, 13.5, 18 m (1–4, 5–8, 9+ storeys)${s.future.buildings.length ? '. Built out: the neighbours as feasible footprints on their lots, to their LEP height and FSR' : ''}`) },
+    ...(homes ? [] : [yieldTest]),
+  ];
+  const criteria = [{ head: 'Criterion', w: '38mm' }, { head: 'Asked', w: '48mm' }, { head: 'This option' }, { head: '', w: '5mm' }];
 
   // the sun on each facade, by the way it looks
   const fr = facadeRows(ps, h), anyFuture = fr.some((r) => r.averageFuture !== undefined && Math.abs(r.averageFuture - r.average) > 0.05);
   const faceTable = ytable([{ head: 'Facing', w: '30mm' }, { head: 'Area', r: true }, { head: 'Average', r: true }, { head: `${h} h or more`, r: true }, ...(anyFuture ? [{ head: 'Built out', r: true }] : [])],
-    fr.map((r) => ({ cells: [esc(r.courtyard ? 'courtyard, all walls' : r.dir === 'roof' ? 'roof, all tiers' : r.dir), esc(area(r.areaSqm)), esc(`${r.average.toFixed(1)} h`), esc(`${Math.round(r.share * 100)}%`),
+    fr.map((r) => ({ cells: [esc(r.courtyard ? 'courtyard, all walls' : r.dir), esc(area(r.areaSqm)), esc(`${r.average.toFixed(1)} h`), esc(`${Math.round(r.share * 100)}%`),
       ...(anyFuture ? [esc(r.averageFuture !== undefined ? `${r.averageFuture.toFixed(1)} h · ${Math.round((r.shareFuture ?? 0) * 100)}%` : '—')] : [])] })), true);
 
-  // each building near: today, then the future context's
-  const sepRow = (r: SeparationRow & { name: string }, storeys: string): TRow => { const w = worseReading(r); return { cells: [esc(r.name), esc(storeys), esc(`${fmt(w.distanceM, 1)} / ${fmt(w.band.between)} m`), okMark(separationMark(w))] }; };
-  const sepRows: TRow[] = [
-    ...ps.separation.slice(0, 5).map((r) => { const nb = b.context[r.index]; return sepRow(r, nb.known && nb.heightM > 0 ? `${Math.max(1, Math.round(nb.heightM / 3.1))} today` : '2, unrecorded'); }),
-    ...ps.separationBuiltOut.slice(0, 5).map((r) => sepRow(r, `${s.future.buildings[r.index].storeys}, built out`)),
+  // the apartments storey by storey, in bands of storeys where there are more than eight of them
+  const topStorey = ap.units.reduce((m, u) => Math.max(m, u.storey), 0), bandOfStoreys = Math.max(1, Math.ceil(topStorey / 8));
+  const laterDiffers = !!f && (f.meeting !== ap.meeting || f.none !== ap.none);
+  const storeyRows: TRow[] = [];
+  for (let from = 1; from <= topStorey; from += bandOfStoreys) {
+    const to = Math.min(topStorey, from + bandOfStoreys - 1), us = ap.units.filter((u) => u.storey >= from && u.storey <= to);
+    if (!us.length) continue;
+    const ok = us.filter((u) => meetsSun(u, h, rule.continuous)).length, none = us.filter((u) => u.hours === 0).length;
+    storeyRows.push({ cells: [esc(from === to ? String(from) : `${from}–${to}`), esc(fmt(us.length)), esc(`${fmt(ok)} · ${pctOf(ok, us.length)}`), esc(`${fmt(none)} · ${pctOf(none, us.length)}`),
+      ...(laterDiffers ? [esc(`${fmt(us.filter((u) => meetsSun(u, h, rule.continuous, true)).length)}`)] : [])] });
+  }
+  const storeyTable = ytable([{ head: bandOfStoreys > 1 ? 'Storeys' : 'Storey', w: '30mm' }, { head: 'Apartments', r: true }, { head: `${h} h or more`, r: true }, { head: 'No sun', r: true }, ...(laterDiffers ? [{ head: `${h} h built out`, r: true }] : [])], storeyRows, true);
+
+  // the shadow it adds, by the land it falls on
+  const LAND: Record<ShadeKind, string> = { home: 'residential lots', heritage: 'heritage items', park: 'parks and reserves' };
+  const noneOr = (k: number) => (k ? fmt(k) : 'none');
+  const shadeRows: TRow[] = [
+    ...(['home', 'heritage', 'park'] as ShadeKind[]).map((k): TRow => ({ cells: ps.measured[k]
+      ? [esc(LAND[k]), esc(fmt(sh.reached[k])), esc(noneOr(sh.shaded[k])), esc(shadeWords(ps, k))]
+      : [esc(LAND[k]), '—', '—', 'not measured'] })),
+    ...(sh.shaded.home ? [
+      { cells: [esc(`…taken below ${sh.homes.hoursRequired} h of sun`), '', esc(noneOr(sh.homes.fallBelow)), ''], note: asks(`A residential lot is held to half its open ground in sun for ${sh.homes.hoursRequired} hours, 9 am – 3 pm at mid winter, as a DCP commonly asks`) },
+      { cells: ['…below it today, cut further', '', esc(noneOr(sh.homes.cutFurther)), ''] },
+    ] : []),
   ];
-  const sepTable = sepRows.length
-    ? ytable([{ head: 'Building', w: '62mm' }, { head: 'Storeys', w: '24mm' }, { head: 'Apart / asked', r: true }, { head: '', w: '5mm' }], sepRows, true)
-    : `<div class="ynote">No building the sources record stands within 24 m of it${s.future.buildings.length ? ', nor would the future context' : ''}, across a street aside.</div>`;
+  const shadeTable = ytable([{ head: 'Land', w: '50mm' }, { head: 'In reach', r: true, w: '18mm' }, { head: 'Shaded', r: true, w: '18mm' }, { head: 'Most added, and when', r: true }], shadeRows, true);
 
-  const blocks = [zBlock('Against the criteria', testTable), zBlock('Sun on each facade and the roof', faceTable), zBlock('Building separation', sepTable)];
+  const solarBlocks = [zBlock('Against the criteria', ytable(criteria, solarTests, true)), zBlock('Sun on each facade', faceTable), ...(storeyRows.length ? [zBlock('Apartments, storey by storey', storeyTable)] : [])];
+  // (each building's separation is on the drawing, a dimension with what is asked of it, and not in a table here:
+  // Z. 2026-11, "the building separation needs to be visible in the drawing, don't put it into text")
+  const shadowBlocks = [zBlock('Against the criteria', ytable(criteria, shadowTests, true)), zBlock('The shadow it adds', shadeTable)];
 
-  // the drawings: the massing from the street corner, from the opposite corner, and the plan of shadow and separation
+  // the drawings. Solar access: the massing from the street corner over the same from the opposite corner, each the
+  // width of the page and framed close on the building (a few metres of town round it)
   const pts = b.siteRing.slice(0, -1);
   const lat = pts.reduce((t, q) => t + q[1], 0) / pts.length, lon = pts.reduce((t, q) => t + q[0], 0) / pts.length;
-  // the two massings side by side over the plan, each framed close on the building (a few metres of town round it)
-  const AXO_H = 150, PLAN_H = PAGE_H - AXO_H, W = PAGE_W / 2, IN = 6, fid = `${id}-c`;
-  const name = (scale: number) => ['Shadow and separation', `1:${fmt(scale).replace(',', ' ')}`, 'shadows each hour, 9 am to 3 pm'];
-  // every building's shadow, each hour from 9 to 3: the neighbours as the report draws theirs, at the heights the sun study gives them
-  // (two storeys where none is recorded), the envelope's swept exactly
+  const AXO_H = PAGE_H / 2, IN = 6, fid = `${id}-c`;
+  const axo = (behind: boolean, top: number, id2: string) => figureAt(PAGE_X, top, PAGE_W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: PAGE_W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, behind, focusM: 6, mono: true }, id2));
+  const solarFigures = !homes ? '' : axo(false, 0, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
+    + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
+    + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
+
+  // Shadow and separation: the path's plan, the whole page, at the overview's scale, with every building's shadow
+  // each hour from 9 to 3 (the neighbours at the heights the sun study gives them, two storeys where none is
+  // recorded; the envelope's swept exactly) laid one soft layer over the last, and the envelope's own at 9 am, noon
+  // and 3 pm outlined; the envelope's in the style's blue, the neighbours' in grey ("the shadow of our design should have
+  // a different colour than the others"), and each separation a dimension with what is asked of it ("the building
+  // separation needs to be visible in the drawing, don't put it into text"). The neighbours in black and white, white buildings in a black line with their street numbers
+  // and no zone on them: the zones are the overview's. Chosen from a board of iterations (Z. 2026-11: "the shadow
+  // should be the same scale as plans"; "can it be the plan like it was before, just with shadows"; "is it possible
+  // to make the surrounding buildings black white, without zone? zones are only visible on the 2nd page"; "white
+  // buildings, hour by hour"). It was the report's sun page: every building white on grey with its storeys, the
+  // envelope's shadow in the site's accent and hatched where it adds shadow, each separation a dimension, 1:1 000.
+  // (The ground coloured by its hours of sun, as the solar access diagram colours a facade, was tried and not kept.)
+  // YIELD_SHADOW_LOOK (JSON) overrides any part of the look, to draw further iterations.
+  interface ShadowLook {
+    label?: string; hours: 'hourly' | 'three' | 'noon'; neighbours: boolean; ownShadow: boolean; hatch: boolean; outlines: boolean; dims: boolean; shaded: boolean;
+    own: string; oAlpha: number; nInk: string; nAlpha: number; multiply: boolean; bw?: 'white' | 'black' | 'grey';
+    /**
+     * How the envelope's own shadow is drawn: its hours laid over each other in one ink (`layers`); as contours, each
+     * band the ground in it so many hours (`contours`); or each hour's shadow in its own colour, outlined (`sweep`).
+     * `ramp` the colours: contours `pink-orange` (pink on the morning side, orange on the afternoon side, a gradient
+     * across each band) or `warm` (cream to red); a sweep `pink-lilac` or `yellow-red`, 9 am to 3 pm.
+     */
+    ownStyle?: 'layers' | 'contours' | 'sweep'; ramp?: 'pink-orange' | 'warm' | 'pink-lilac' | 'yellow-red' | 'report';
+    /**
+     * The neighbours' shadows: hour by hour in grey (`layers`); as contours of their own under the envelope's
+     * (`contours`, in `gRamp`: Canary's `blue`s); or every building's together as one set
+     * of contours in the envelope's ramp, the envelope's own reach outlined (`all`).
+     */
+    ground?: 'layers' | 'contours' | 'all'; gRamp?: 'blue';
+  }
+  // The shadows at 9 am, 12 pm and 3 pm alone, the neighbours' and the scheme's, as a shadow diagram is lodged (Z.
+  // 2026-11: "for shadow of neighbour show only 9, 12 and 15 hours"; they were each hour from 9 to 3, seven layers).
+  // Canary: the scheme's three shadows each in a colour of its own, the yellow, orange and red of the report's
+  // isometric, outlined and named ("the colours for Canary are still off, please use the same colours you use for the
+  // isometry in the report"; they were contours in the ePlanning pinks and oranges, still to be had: `"ownStyle":
+  // "contours", "ramp": "pink-orange", "hours": "hourly"`). The other styles lay theirs over each other in one ink.
+  const canaryShadow = deckLook().zones === 'lep' && deckLook().id !== 'heron';
+  const asked = process.env.YIELD_SHADOW_LOOK ? JSON.parse(process.env.YIELD_SHADOW_LOOK) as Partial<ShadowLook> : {};
+  const three = (asked.hours ?? 'three') === 'three';
+  const LOOK: ShadowLook = { hours: 'three', neighbours: true, ownShadow: true, hatch: false, outlines: true, dims: true, shaded: false,
+    own: ownShadowOnPlan(), oAlpha: three ? THREE_HOUR_ALPHA.own : OWN_HOUR_ALPHA, nInk: shadowInk(), nAlpha: three ? THREE_HOUR_ALPHA.neighbours : PLAN_HOUR_ALPHA, multiply: true, bw: 'white',
+    ...(canaryShadow ? { ownStyle: 'sweep', ramp: 'report', own: paletteRamp()[3] } as Partial<ShadowLook> : {}),
+    ...asked };
+  const name = (scale: number) => ['Plan', `1:${fmt(scale).replace(',', ' ')}`, LOOK.label ?? (LOOK.hours === 'hourly' ? 'shadows each hour, 9 am to 3 pm' : LOOK.hours === 'three' ? 'shadows at 9 am, 12 pm and 3 pm' : 'shadows at 12 pm')];
   const massBlocks = schemeBlocks(ps.y);
   const casters = b.context.map((cb) => ({ ring: (cb.rings[0] ?? []).map(([x, yy]) => s.toLocal(x, yy)), h: cb.known && cb.heightM > 0 ? cb.heightM : UNKNOWN_HEIGHT_M })).filter((c) => c.ring.length >= 3);
   const hourSuns = winterSun(lat, lon, [9, 10, 11, 12, 13, 14, 15].map((hr) => hr * 60));
   const hourly = hourSuns.map((sun) => ({ hulls: casters.map((c) => shadowHull(c.ring, c.h, sun.altitudeDeg, sun.azimuthDeg, 1)).filter((hl): hl is XY[] => !!hl), scheme: groundShadow(massBlocks, sun) }));
-  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PLAN_H }, { y: ps.y }, fid, { room: 2.6, inset: 6, keepOut: [labelBox(name(5000)).map((v) => v - (LABEL_IN - IN)) as [number, number, number, number]], plain: true, study: true,
+  // (what stands is drawn as its own spread draws it, not as a scheme: no tiers to number, no envelope)
+  const standing = id === 'standsToday' ? standingOf(b, s) : [];
+  const pickHours = (hs: typeof hourly) => (LOOK.hours === 'three' ? hs.filter((_, i) => i % 3 === 0) : LOOK.hours === 'noon' ? [hs[3]] : hs);
+  // the envelope's shadow, as contours or as a sweep
+  const ownStyle = LOOK.ownShadow ? LOOK.ownStyle ?? 'layers' : 'layers';
+  const centroidOf = (rings: XY[][]) => { const ps2 = rings.flat(); return ps2.reduce((t, p) => ({ x: t.x + p.x / ps2.length, y: t.y + p.y / ps2.length }), { x: 0, y: 0 }); };
+  const R = CANARY_SHADOW_RAMPS;
+  const groundStyle = LOOK.neighbours ? LOOK.ground ?? 'layers' : 'layers';
+  const frame = planFrame(s, PLAN_ROOM, PAGE_W, PAGE_H);
+  const levels = ownStyle === 'contours' && groundStyle !== 'all' ? shadeLevels(hourly.map((hr) => ({ solid: [], evenOdd: hr.scheme }))) : [];
+  // the neighbours' shadows as contours: their own, or every building's together
+  const groundLevels = groundStyle === 'layers' ? [] : shadeLevels(hourly.map((hr) => ({ solid: hr.hulls, evenOdd: groundStyle === 'all' ? hr.scheme : [] })), frame);
+  const morning = centroidOf(hourly[0].scheme), afternoon = centroidOf(hourly[hourly.length - 1].scheme);
+  // (a band from each of CONTOUR_HOURS the levels reach to the next: four bands of two hours, the last all seven)
+  const stepped = (lv: XY[][][]) => { const at = CONTOUR_HOURS.filter((hr) => hr <= lv.length); return at.map((hr, j) => ({ rings: lv[hr - 1], inner: at[j + 1] ? lv[at[j + 1] - 1] : [], j })); };
+  const bandOf = (j: number) => {
+    if (LOOK.ramp === 'warm') return { fill: R.warm[j], edge: R.warm[Math.min(3, j + 1)] };
+    return { fill: { a: morning, b: afternoon, from: R.pink[j], to: R.orange[j] }, edge: R.pink[Math.min(3, j + 1)] };
+  };
+  const bands = stepped(levels).map(({ rings, inner, j }) => ({ rings, inner, ...bandOf(j) }));
+  const groundTone = (j: number) => (groundStyle === 'all' ? bandOf(j).fill : R.blue[j]);
+  const groundBands = stepped(groundLevels).map(({ rings, inner, j }) => ({ rings, inner, fill: groundTone(j) }));
+  // (a sweep's colours: the report's isometric's yellow to its red across the day, or a ramp of swatches by the hour)
+  const reportRamp = LOOK.ramp === 'report' || !LOOK.ramp || !(LOOK.ramp in CANARY_SWEEPS);
+  const sweepInk = (i: number) => (reportRamp ? mix(paletteRamp()[2], paletteRamp()[3], i / 6) : CANARY_SWEEPS[LOOK.ramp === 'yellow-red' ? 'yellow-red' : 'pink-lilac'][i]);
+  const sweepHours = hourly.map((hr, i) => ({ hr, i })).filter(({ i }) => (LOOK.hours === 'three' ? i % 3 === 0 : LOOK.hours === 'noon' ? i === 3 : true));
+  const sweep = ownStyle === 'sweep' ? sweepHours.map(({ hr, i }) => ({ rings: hr.scheme, fill: sweepInk(i), edge: inkFor(sweepInk(i), 0.42), label: clock(hourSuns[i].clockMin), alpha: sweepHours.length <= 3 ? 0.42 : 0.2 })) : [];
+  // the hours named at the far end of the envelope's shadow: outlined at 9, 12 and 3 where it is laid in layers; named
+  // alone over contours, at those three, in the colour of their side; every hour over a sweep, in its own colour
+  const named = ownStyle === 'sweep' ? sweep.map((sw) => ({ rings: sw.rings, label: sw.label, ink: sw.edge, outline: false }))
+    : hourSuns.map((sun, i) => ({ sun, i })).filter(({ sun }) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map(({ sun, i }) => ({
+      rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin),
+      ...(ownStyle === 'contours' ? { outline: groundStyle === 'all', ink: i < 3 || LOOK.ramp === 'warm' ? CANARY_INK.red.text : i > 3 ? CANARY_INK.orange.text : CANARY_INK.red.deep } : {}),
+    }));
+  const plan = planView(b, s, { x: 0, y: 0, w: PAGE_W, h: PAGE_H }, standing.length ? { standing } : { y: ps.y }, fid, { room: PLAN_ROOM, inset: 6, keepOut: [labelBox(name(5000))], bw: LOOK.bw,
     marks: {
-      hours: hourly,
-      added: addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]),
-      shadows: hourSuns.filter((sun) => [9 * 60, 12 * 60, 15 * 60].includes(sun.clockMin)).map((sun) => ({ rings: groundShadow(massBlocks, sun), label: clock(sun.clockMin) })).filter((x) => x.rings.length),
-      shaded: sh.shadedTargets.map((i) => ps.targets[i].rings),
-      dims: [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, ink: statusInks()[w.status], dash: w.status === 'blank' ? blankDash() : '' }; }),
+      hours: pickHours(hourly).map((hr) => ({ hulls: LOOK.neighbours && groundStyle === 'layers' ? hr.hulls : [], scheme: LOOK.ownShadow && ownStyle === 'layers' && groundStyle !== 'all' ? hr.scheme : [] })),
+      bands, sweep, groundBands,
+      added: LOOK.hatch ? addedGround(hourly.map((hr) => hr.scheme), hourly.map((hr) => hr.hulls), [s.ring]) : [],
+      shadows: LOOK.outlines ? named.filter((x) => x.rings.length) : [],
+      shaded: LOOK.shaded ? sh.shadedTargets.map((i) => ps.targets[i].rings) : [],
+      // (each separation with what is asked of it, "5.9 m" over its line and "min 12 m" under it: the drawing says both, where a table beside it did)
+      dims: LOOK.dims ? [...ps.separation, ...ps.separationBuiltOut].map((r) => { const w = worseReading(r); return { a: w.a, b: w.b, label: `${fmt(w.distanceM, 1)} m`, asked: `min ${fmt(w.band.between)} m`, ink: DIM_INK, dash: w.status === 'blank' ? ' stroke-dasharray="1.1 0.7"' : '', holds: w.status !== 'short' }; }) : [],
+      look: LOOK,
     } });
-  const axo = (behind: boolean, left: number, id2: string) => figureAt(left, 0, W, AXO_H, axonometric(b, s, { x: 2, y: IN + 9, w: W - 4, h: AXO_H - IN - 11 }, { y: ps.y, facades: ps.facades, roofs: ps.roofs, behind, focusM: 6, mono: true }, id2));
-  const figures = axo(false, PAGE_X, `${fid}-f`) + labelAt(PAGE_X, 0, IN, ['From the street corner'])
-    + axo(true, PAGE_X + W, `${fid}-b`) + labelAt(PAGE_X + W, 0, IN, ['From the opposite corner'])
-    + figureAt(PAGE_X, AXO_H, PAGE_W, PLAN_H, plan.svg) + labelAt(PAGE_X, AXO_H, IN, name(plan.scale))
-    + `<div class="abs" style="left:${PAGE_X + W - 0.4}mm;top:0;width:0.8mm;height:${AXO_H}mm;background:#ffffff"></div><div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
+  const shadowFigures = bleedFigure(0, PAGE_H, plan.svg) + mapLabel(0, name(plan.scale));
 
-  // the key
+  // the keys
   const KEY = keySwatches();
-  const SEP = statusInks();
-  const sepSwatch = `<path d="M0.4,0.9H4.6" stroke="${SEP.clear}" stroke-width="0.35"/><path d="M0.4,1.8H4.6" stroke="${SEP.blank}" stroke-width="0.35"${blankDash()}/><path d="M0.4,2.7H4.6" stroke="${SEP.short}" stroke-width="0.35"/>`;
-  const legend: LegendEntry[] = [
+  const solarTown = townEntries(b, deckLook(), false), solarZones = solarTown.entries;
+  const solarLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
-    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades and roofs, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
+    { swatch: KEY.zones(sunBands().map((x) => x.fill)), label: `Facades, hours of sun 9 am – 3 pm on 21 June: none, under 1, 1–2, 2–3, 3–4, 4–5, 5 and over` },
     { swatch: KEY.use('residential'), label: 'Indicative massing: blank walls' },
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="#3a3a3a" stroke-width="0.15"/>`, label: 'Its roofs, white: not counted' },
     { swatch: `<path d="M0.4,0.7H2.3V3H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/><path d="M2.7,0.7H4.6V3H2.7Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2" stroke-dasharray="0.5,0.3"/>`,
-      label: s.future.buildings.length ? 'Neighbours in white at their heights; dashed, their future on feasible footprints to their LEP height and FSR' : 'Neighbours in white at their heights' },
-    { swatch: Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${shadowInk()}" fill-opacity="${stackedAlpha(i + 1).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`,
-      label: 'Neighbours\' shadows on 21 June, each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' },
-    { swatch: Array.from({ length: hourSuns.length }, (_, i) => `<rect x="${((i * 5) / hourSuns.length).toFixed(2)}" y="0.3" width="${(5 / hourSuns.length).toFixed(2)}" height="3" fill="${ourShadowInk()}" fill-opacity="${stackedAlpha(i + 1).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>` + fillShape('M2.6,0.3H5V3.3H2.6Z', { x0: 2.6, y0: 0.3, x1: 5, y1: 3.3 }, ADDED_HATCH(), 1.6),
-      label: 'The envelope\'s shadow, the same hours over theirs, at 9 am, 12 pm and 3 pm outlined; hatched where only it shades the ground: what it would overshadow' },
-    { swatch: `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#6f6f6f" stroke-width="0.2"/>`, label: 'Buildings in plan; numbers are storeys, grey where no height is recorded and two are assumed' },
-    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${siteInk()}" fill-opacity="0.1" stroke="${siteInk()}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' },
-    { swatch: sepSwatch, label: 'Separation: clear; holds if one face is blank; short' },
+      label: `Neighbours in white at their heights${solarTown.words}${s.future.buildings.length ? '; dashed, their future on feasible footprints to their LEP height and FSR' : ''}` },
+    ...solarZones,
+  ];
+  // the plan's key (the site, what is built, each tier's envelope), then the shadows as they are drawn, then the neighbours
+  const lineLook = deckLook().id === 'heron';
+  const layers = pickHours(hourly).length;
+  const hourSwatch = (ink: string, alpha: number) => Array.from({ length: layers }, (_, i) => `<rect x="${((i * 5) / layers).toFixed(2)}" y="0.3" width="${(5 / layers).toFixed(2)}" height="3" fill="${ink}" fill-opacity="${(1 - (1 - alpha) ** (i + 1)).toFixed(2)}"/>`).join('') + `<rect x="0" y="0.3" width="5" height="3" fill="none" stroke="#6f6f6f" stroke-width="0.1"/>`;
+  const whenWords = LOOK.hours === 'hourly' ? 'each hour 9 am – 3 pm laid over the last: the deeper, the longer in shadow' : LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm, laid over each other: the deeper, the more of them in shadow' : 'at 12 pm';
+  const its = standing.length ? 'Its' : 'The envelope\'s', sameInk = LOOK.own.toLowerCase() === LOOK.nInk.toLowerCase();
+  // a key's swatch of the bands: their colours in a row, or the pinks over the oranges
+  const stripes = (cs: string[]) => cs.map((c, i) => `<rect x="${((i * 5) / cs.length).toFixed(2)}" y="0.3" width="${(5 / cs.length + 0.02).toFixed(2)}" height="3" fill="${c}"/>`).join('');
+  const pinkOverOrange = R.pink.map((c, i) => `<rect x="${((i * 5) / 4).toFixed(2)}" y="0.3" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${c}"/><rect x="${((i * 5) / 4).toFixed(2)}" y="1.8" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${R.orange[i]}"/>`).join('');
+  const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
+  const planTown = LOOK.bw === 'white' ? townEntries(b, deckLook(), false, plan.zones) : { entries: [], words: '' }, planZones = planTown.entries;
+  const shadowLegend: LegendEntry[] = [
+    { swatch: KEY.site, label: 'The site' },
+    ...(standing.length ? [{ swatch: KEY.standing, label: 'What stands on the site' }]
+      : [...(['residential', 'retail', 'commercial'] as Use[]).filter((u) => ps.y.tiers.some((t) => t.use === u)).map((u) => ({ swatch: KEY.use(u), label: `Indicative massing, ${USE_WORD[u]}` })),
+        { swatch: KEY.envelope, label: 'Envelope of each tier, numbered as in the schedule' }]),
+    ...(LOOK.neighbours && groundStyle === 'layers' ? [{ swatch: hourSwatch(LOOK.nInk, LOOK.nAlpha), label: `${LOOK.ownShadow && sameInk && ownStyle === 'layers' ? 'Every building\'s shadow' : 'The neighbours\' shadows'} on 21 June, ${whenWords}` }] : []),
+    ...(groundStyle !== 'layers' ? [{ swatch: groundStyle === 'all' ? pinkOverOrange : stripes(R.blue),
+      label: groundStyle === 'all'
+        ? `Every building's shadow on 21 June, 9 am – 3 pm, in bands: the ground in shadow one or two hours (palest) to all seven (deepest); pink on the morning side, orange on the afternoon side. ${its} own at 9 am, 12 pm and 3 pm outlined`
+        : `The neighbours' shadows on 21 June, 9 am – 3 pm, in bands: the ground in their shadow one or two hours (palest) to all seven (deepest)` }] : []),
+    ...(ownStyle === 'contours' && groundStyle !== 'all' ? [{ swatch: LOOK.ramp === 'warm' ? stripes(R.warm) : pinkOverOrange,
+      label: `${its} shadow on 21 June, 9 am – 3 pm, in bands: the ground in it one or two hours (palest) to all seven (deepest)${LOOK.ramp === 'warm' ? '' : '; pink on the morning side, orange on the afternoon side'}${LOOK.outlines ? '; 9 am, 12 pm and 3 pm named at its far end' : ''}` }] : []),
+    ...(ownStyle === 'sweep' ? [{ swatch: sweep.map((sw, i) => `<rect x="${((i * 5) / sweep.length).toFixed(2)}" y="0.3" width="${(5 / sweep.length + 0.02).toFixed(2)}" height="3" fill="${sw.fill}"/>`).join(''),
+      label: `${its} shadow ${LOOK.hours === 'three' ? 'at 9 am, 12 pm and 3 pm on 21 June' : 'each hour on 21 June, 9 am to 3 pm'}, each in its own colour (${reportRamp ? (LOOK.hours === 'three' ? 'yellow at 9 am, orange at 12 pm, red at 3 pm' : 'yellow at 9 am to red at 3 pm') : LOOK.ramp === 'yellow-red' ? 'yellow at 9 am to red at 3 pm' : 'pink at 9 am to lilac at 3 pm'}), outlined and named; deeper where they overlap` }] : []),
+    ...(ownStyle === 'layers' && LOOK.ownShadow && !(LOOK.neighbours && sameInk) ? [{ swatch: hourSwatch(LOOK.own, LOOK.oAlpha), label: LOOK.neighbours ? `${its} own shadow, the same hours, in its own colour${LOOK.outlines ? '; at 9 am, 12 pm and 3 pm outlined' : ''}` : `${its} shadow on 21 June, ${whenWords}` }] : []),
+    ...(LOOK.outlines && ownStyle === 'layers' && !(LOOK.ownShadow && LOOK.neighbours && !sameInk) ? [{ swatch: `<path d="M0.4,0.6H4.6V3H0.4Z" fill="none" stroke="${LOOK.own}" stroke-width="0.25" stroke-dasharray="0.7,0.45"/>`, label: `${its} shadow at 9 am, 12 pm and 3 pm, outlined` }] : []),
+    ...(LOOK.hatch ? [{ swatch: fillShape('M0.4,0.3H4.6V3.3H0.4Z', { x0: 0.4, y0: 0.3, x1: 4.6, y1: 3.3 }, ADDED_HATCH(LOOK.own), 1.6), label: `Hatched: the ground only ${standing.length ? 'it' : 'the envelope'} shades, what it ${standing.length ? 'overshadows' : 'would overshadow'}` }] : []),
+    ...(LOOK.shaded ? [{ swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${LOOK.own}" fill-opacity="0.1" stroke="${LOOK.own}" stroke-width="0.3" stroke-dasharray="0.5,0.4"/>`, label: 'Land it adds shadow to: a residential lot, heritage item or park' }] : []),
+    ...(LOOK.dims ? [{ swatch: `<path d="M0.2,1.2H4.8" stroke="${DIM_INK}" stroke-width="0.16"/><path d="M0.6,1.75L1.4,0.65M3.6,1.75L4.4,0.65" stroke="${DIM_INK}" stroke-width="0.3" stroke-linecap="round"/><path d="M0.2,2.8H4.8" stroke="${DIM_INK}" stroke-width="0.16" stroke-dasharray="1.1 0.7"/>`,
+      label: 'Building separation: the distance over its line, what is asked (ADG 3F-1) under it; dashed where it holds only with one face blank' }] : []),
+    { swatch: lineLook ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#111111" stroke-width="0.45"/>` : bwSwatch, label: `Buildings round about${planTown.words}, each lot with its street number; lot boundaries, NSW cadastre` },
+    ...planZones,
+    ...(s.future.buildings.length ? [{ swatch: KEY.future, label: 'Dashed: a neighbour\'s future, a feasible footprint to its LEP height and FSR' }] : []),
+    ...(plan.kerbs.length ? [{ swatch: LOOK.bw || lineLook ? `<path d="M0.4,1.8H4.6" fill="none" stroke="#8c8c8c" stroke-width="0.25"/>` : KEY.kerb, label: 'Kerb line, indicative' }] : []),
   ];
 
-  // what it says
-  const out = fr.filter((r) => !r.courtyard && r.dir !== 'roof'), roofRow = fr.find((r) => r.dir === 'roof');
+  // what each says
+  const out = fr.filter((r) => !r.courtyard);
   const good = out.filter((r) => r.average >= h - 1e-9).map((r) => r.dir), poor = out.filter((r) => r.average < 1).map((r) => r.dir);
   const list = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0]);
   const sepShortN = ps.separation.filter((r) => worseReading(r).status === 'short').length;
-  const narrative = brief([
+  const solarSays = brief([
     `${pctOf(ap.meeting, ap.total)} of its ${fmt(ap.total)} apartments get ${h} hours of sun${unbroken} at mid winter${meets(ap.meeting) ? ', meeting the ADG\'s 70%' : ', short of the ADG\'s 70%'}, and ${pctOf(ap.none, ap.total)} get none${fewNone(ap.none) ? '' : ', over the 15% it allows'}.`,
     good.length || poor.length ? `${good.length ? `Its ${list(good)} ${good.length === 1 ? 'face has' : 'faces have'} ${h} hours or more on average` : ''}${good.length && poor.length ? '; ' : ''}${poor.length ? `${good.length ? 'its' : 'Its'} ${list(poor)} under one` : ''}.` : '',
-    roofRow ? `Its roof has ${roofRow.average.toFixed(1)} hours on average, ${Math.round(roofRow.share * 100)}% of it ${h} hours or more.` : '',
     f && f.meeting !== ap.meeting ? `Once the neighbours build out, ${pctOf(f.meeting, ap.total)} have the hours.` : '',
-    sepShortN ? `${sepShortN} of the buildings near it ${sepShortN === 1 ? 'stands' : 'stand'} closer than the ADG's separation: the envelope keeps its half to each boundary, so the shortfall is the neighbours' nearness to theirs.` : '',
-    ps.separationBuiltOut.length ? (ps.separationBuiltOut.some((r) => r.today.status !== 'clear') ? 'Built out, a neighbour\'s footprint would stand closer than the separation.' : 'Built out, the neighbours\' footprints keep the separation from it: they can still develop.') : '',
-    shadowShort(ps) !== 'none' ? `It adds shadow to ${shadowShort(ps)}.` : 'It adds no shadow to the parks, heritage items or homes round about.',
   ], 560);
-  return {
-    id: `${String(n).padStart(2, '0')}_${id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`)}_compliance`, title: COMPLIANCE_TITLE[id], subtitle: subtitleOf(b, s), textHtml: '',
-    figureHtml: zFlow(blocks) + figures, full: true, narrative, accent: inks().accent, legend,
-    sources: `${sunNote(b, s)} ${SEPARATION_NOTE} Indicative, for a solar access study and the design to confirm. Every assumption is on page ${String(last).padStart(2, '0')}.${meshNote(b)}`,
-  };
+  const shadowSays = brief([
+    shadowShort(ps) !== 'none' ? `It adds shadow to ${shadowShort(ps)}.` : 'It adds no shadow to the parks, heritage items or homes round about.',
+    sh.shaded.home ? (sh.homes.fallBelow ? `${sh.homes.fallBelow} of the lots ${sh.homes.fallBelow === 1 ? 'is' : 'are'} taken below ${sh.homes.hoursRequired} hours of sun on half ${sh.homes.fallBelow === 1 ? 'its' : 'their'} open ground.` : `No lot is taken below ${sh.homes.hoursRequired} hours of sun on half its open ground.`) : '',
+    sepShortN ? `${sepShortN} of the buildings near it ${sepShortN === 1 ? 'stands' : 'stand'} closer than the ADG's separation: the envelope keeps its half to each boundary, so the shortfall is the neighbours' nearness to theirs.` : ps.separation.length ? 'Every building near it stands clear of the ADG\'s separation, or holds it with a blank face.' : '',
+    ps.separationBuiltOut.length ? (ps.separationBuiltOut.some((r) => r.today.status !== 'clear') ? 'Built out, a neighbour\'s footprint would stand closer than the separation.' : 'Built out, the neighbours\' footprints keep the separation from it: they can still develop.') : '',
+  ], 560);
+  const slug = id.replace(/[A-Z]/g, (ch) => `_${ch.toLowerCase()}`), page = (k: number) => String(k).padStart(2, '0');
+  const closing = `Every assumption is on page ${page(last)}.${meshNote(b)}`;
+  return [
+    { id: `${page(n)}_${slug}_${TEST_PAGE.shadow.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.shadow.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      figureHtml: zFlow(shadowBlocks) + shadowFigures, full: true, narrative: shadowSays, accent: inks().accent, legend: shadowLegend,
+      sources: `${shadowNote(b)} ${SEPARATION_NOTE} Indicative, for the design to confirm.${homes ? ` Its apartments' sun is on page ${page(n + 1)}.` : ''} ${closing}` },
+    ...(homes ? [{ id: `${page(n + 1)}_${slug}_${TEST_PAGE.solar.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.solar.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      figureHtml: zFlow(solarBlocks) + solarFigures, full: true, narrative: solarSays, accent: inks().accent, legend: solarLegend,
+      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}. ${closing}` }] : []),
+  ];
 }
 
 /** How the separations were read, for a compliance spread's sources line. */
@@ -2068,7 +2662,7 @@ const SEPARATION_NOTE = 'Separation is the least distance in plan from each buil
 const COUNT_WORD = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 
 /** What stands today: the building or buildings on the site, set against the paths. */
-function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number): Slide {
+function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number, planOn?: number): Slide {
   const A = b.siteAreaSqm ?? 0, c = b.controls;
   const ex = existingSummary(b.existing ?? [])!;
   const standing = standingOf(b, s);
@@ -2102,7 +2696,7 @@ function standingSlide(b: YieldBundle, s: YieldStudy, paths: Path[], n: number):
     narrative, accent: inks().accent, legend: schemeLegend(b, s, undefined, standing.length > 0, figures.kerbs),
     sources: `What stands is read from ${fromMeshes.traced
       ? `Google's Photorealistic 3D Tiles (${meshCredits(b)}), its footprint traced and its height read from the meshes where the footprint sources (${footprintSources(b)}) had no building on the lot`
-      : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}` };
+      : `the recorded footprint${ex.count === 1 ? '' : 's'} (${footprintSources(b)})${fromMeshes.height ? ` and, the sources having no height, its height from Google's Photorealistic 3D Tiles (${meshCredits(b)})` : ' and heights'}`}, its floor area each footprint by its storeys${fromMeshes.height && !(b.existing ?? []).some((e) => e.storeys) ? `, the height at ${m1(ex.storeyM)} a storey${(b.existing ?? []).some((e) => e.kind) ? ` (the source calls it ${(b.existing ?? []).map((e) => e.kind).filter(Boolean).join(', ')})` : ', an apartment\'s, the source not saying what it is'}` : ''}: indicative, not a survey.${b.mesh?.heights ? ` The neighbours' heights the sources lacked are from the same meshes.` : ''}${planOn ? ` Its plan is on page ${String(planOn).padStart(2, '0')}, with its shadow and its separations.` : ''}` };
 }
 
 /** The last spread: the assumptions on the left, the controls table in full on the right. */
@@ -2143,8 +2737,8 @@ function controlsSlide(b: YieldBundle, s: YieldStudy, n: number): Slide {
   const right = `<div class="abs" data-fit style="left:${RX}mm;top:${RTOP}mm;width:${RW}mm;height:${RFOOT - RTOP}mm;overflow:hidden"><div class="ytw"><table class="yt yc"><colgroup><col style="width:42mm"><col><col><col style="width:5mm"></colgroup><tbody>${table.join('')}</tbody></table></div></div>`;
   return { id: `${String(n).padStart(2, '0')}_controls_and_assumptions`, title: 'Controls and assumptions', subtitle: subtitleOf(b, s), textHtml: '',
     figureHtml: zFlow([zBlock('The assumptions', zTable(rows))]) + right, full: true, accent: inks().accent,
-    narrative: s.noScheme
-      ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn, none is set against them.'
+    narrative: s.noScheme || s.base.archetype === 'none'
+      ? 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets out the controls at the site; with no scheme drawn within them, none is set against them.'
       : 'Every figure rests on these assumptions. Each can be changed in yield_assumptions.json beside the output, and the study drawn again. The table sets the scheme within the controls against each control.',
     sources: `Controls from the NSW ePlanning layers at the site; the Apartment Design Guide; the Housing SEPP 2021. ${NOT_A_DESIGN.replace(/^A feasibility study, not a design: [^;]+; /, '')}` };
 }
@@ -2158,12 +2752,15 @@ function drawYieldDeck(b: YieldBundle, _meta: SheetMeta): DeckHtml {
   const s = yieldStudy(b);
   const paths = pathsOf(b, s);
   const slides: Slide[] = [overviewSlide(b, s, paths)];
-  const drawn = paths.filter(drawnPath);
-  // each path's spread; then a compliance sheet for each option that holds apartments to test; the controls and assumptions last
-  const tested = testedPaths(b, s, paths);
-  const last = drawn.length + 2 + tested.length;
-  drawn.forEach((p) => slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, last) : standingSlide(b, s, paths, slides.length + 1)));
-  tested.forEach((t, i) => slides.push(complianceSheet(b, s, t, slides.length + 1, last, i === 0)));
+  // each path's spread, and straight after it the two pages it is tested on (its shadow and separation, which is
+  // its plan, then its solar access) where it holds apartments to test; the controls and assumptions last
+  const order = deckOrder(b, s, paths);
+  let first = true;
+  for (const { p, page, test } of order.paths) {
+    const planOn = test ? page + 1 : undefined;
+    slides.push(p.y ? schemeSlide(b, s, p, slides.length + 1, order.last, planOn) : standingSlide(b, s, paths, slides.length + 1, planOn));
+    if (test) { slides.push(...complianceSheets(b, s, test, slides.length + 1, order.last, first)); first = false; }
+  }
   slides.push(controlsSlide(b, s, slides.length + 1));
   const cover = yieldCover(b, slides);
   const shell = (title: string, body: string) => `<!DOCTYPE html>
@@ -2258,6 +2855,7 @@ export function yieldJson(b: YieldBundle): string {
     parkingRates: s.parkingSet, standsToday: existingSummary(b.existing ?? []) && { ...existingSummary(b.existing ?? []), ...standingFromMeshes(b).height ? { heightFrom: 'Google Photorealistic 3D Tiles' } : {} },
     zones: b.zones, heightsFromMeshes: b.mesh,
     study: strip(s.base), affordableHousingBonus: strip(s.bonus), envelopeToHeight: strip(s.max), rebuiltAsStands: strip(s.retained),
+    lowMidRiseHousing: s.lmrY && { ...strip(s.lmrY), reading: s.lmr, massing: 'the envelope, one volume' },
     reshapedToComply: s.reshaped && { ...strip(s.reshaped.y), complies: s.reshaped.complies, layout: s.reshaped.layout, layoutsRead: s.reshaped.tried, layoutsFound: s.reshaped.candidates,
       buildings: s.reshaped.buildings.map(({ ring: _r, ...bd }) => bd) },
     transportOrientedDevelopment: s.tod && { ...s.tod, alternative: s.tod.alternative && { ...s.tod.alternative, lga: undefined }, sentence: todSentence(s.tod), scheme: strip(s.todY) },

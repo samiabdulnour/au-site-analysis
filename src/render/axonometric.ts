@@ -20,7 +20,7 @@ import { featureCollection, polygon } from '@turf/helpers';
 import type { XY } from '../lib/geo.js';
 import { alongLine, carriageways, type Carriageway, type RoadLine } from '../lib/carriageway.js';
 import { INK, massingInks } from './atlasKit.js';
-import { tint, vivid, deckLook, greyOf, tpl } from './template.js';
+import { tint, vivid, deckLook, greyOf, tpl, mix, inkFor } from './template.js';
 import { esc } from './chrome.js';
 import { crownPicture, shadowPicture, rand, canopyBottom, canopyVariant, flatCrownSvg, flatBottom, CANOPY, CANOPY_BRANCHINGS, CONTOUR, type CrownKind, type FlatForm } from './crowns.js';
 import { personPicture, riderPicture, linePersonSvg, lineRiderSvg, PEOPLE_VARIANTS, RIDER_VARIANTS, type LineFigure } from './people.js';
@@ -46,6 +46,13 @@ export interface Prism {
    * face, so a nearer face hides them as it hides the face.
    */
   cells?: { ring: number; edge: number; t0: number; t1: number; z0: number; z1: number; fill: string; /** In its own colour, unlit, so it reads against a key. */ flat?: boolean }[];
+  /** Its roof in this colour as it is given, not lit: the one colour a plan beside the massing and their key draw it in. */
+  roofFill?: string;
+  /**
+   * Its walls shaded toward this colour, not toward black: a wall full to the light keeps its fill, one turned from
+   * it takes this ink, its hatch and its storey lines a deeper cut of it. A white model's shade in a colour, not grey.
+   */
+  shadeInk?: string;
   /** Pieces laid on its roof (a roof's cells, coloured by their sun), drawn in their own colours over its top. */
   roof?: { pts: XY[]; fill: string }[];
 }
@@ -56,6 +63,10 @@ export interface AxoNeighbour {
   /** Recorded height; none draws a nominal two storeys, dashed. */
   heightM?: number;
   fill: string;
+  /** Its outline's ink in a white model (`scene.mono`): its zone's colour on a white building, where the model's grey is not wanted. */
+  edge?: string;
+  /** Its walls' shade in a white model (Prism.shadeInk): a colour where the model's grey is not wanted. */
+  shade?: string;
   /** What it may rise to, drawn as a glass over it. */
   future?: number;
 }
@@ -79,8 +90,10 @@ export interface AxoScene {
   /** The height plane over the site, and what to say when it runs above the frame. */
   hob?: { metres: number; note: string };
   envelopes?: { rings: XY[][]; z: number }[];
-  inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string };
-  /** The built's outline over everything, so a future in front of it does not lose it. */
+  inks: { site: string; future: string; futureEdge: string; envelope: string; kerb: string;
+    /** The site's boundary on the ground as one solid line of this ink and width (millimetres), in place of the style's own mark and tint. */
+    siteLine?: { ink: string; w: number } };
+  /** A firmer outline round each building that is built, drawn with it: a translucent future in front of it does not lose it, a building in front of it covers it. */
   silhouette?: boolean;
   /** Set, the frame is fitted to the site and this many metres of town round it, and the town drawn to `reach` runs out past the frame's every edge; unset, everything within reach is fitted in. */
   focusM?: number;
@@ -98,6 +111,13 @@ export interface AxoScene {
   /** A white model: the town round the site (the ground, the lots, the streets, the neighbours, the trees, the traffic,
    * the people) in white and greys, so the colours on what is built read alone. The built keeps its own fills. */
   mono?: boolean;
+  /**
+   * In a white model, the trees, the people and the traffic as the style draws them in its own isometric (the report's
+   * built form): Kingfisher's canopies on their terracotta stems, its figures and its drawn cars; Canary's green
+   * crowns and its traffic in colour. The ground, the streets and the neighbours stay the white model's. (Z. 2026-11:
+   * "the Kingfisher isometry has different trees and people normally".) Heron's line model keeps its own.
+   */
+  entourage?: 'style';
 }
 
 /** The white model's greys: its edges, its ground lines, its kerbs, its people. */
@@ -313,6 +333,10 @@ function lookOf(M: ReturnType<typeof massingInks>, mono: boolean): AxoLook {
  * scale with the drawing, so a town drawn small has hairlines): the neighbours', the futures' glass, what is built on
  * the site and the heavy outline round it, the storeys ruled on its walls.
  */
+/** The firmer outline round what is built (`scene.silhouette`), drawing units: black, so a white scheme stands out among white neighbours. */
+const SILHOUETTE_W = 0.5;
+/** A white model's neighbour outlined in its zone's colour: the line's width, drawing units. */
+const ZONE_EDGE_W = 0.3;
 const LINE_MM = { neighbour: 0.2, future: 0.16, built: 0.3, silhouette: 0.55, storey: 0.08 };
 /** A width on paper, written into the drawing before its scale is known and resolved once it is (`resolvePaper`). */
 const PW = (mm: number) => `@@pw${mm}@@`;
@@ -402,7 +426,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const line = deckLook().id === 'heron';
   const mono = !!scene.mono || line;
   const G = line ? LINE : MONO;
-  const M = mono ? { ...massingInks(), ground: '#ffffff', lot: G.line, park: '#ffffff', road: '#ffffff', axis: G.line, tree: '#ffffff', treeLight: '#ffffff', trunk: G.edge } : massingInks();
+  // (the trees, the people and the traffic in the white model's greys too, unless the scene keeps the style's own)
+  const monoEnt = mono && !(scene.entourage === 'style' && !line);
+  const M = mono ? { ...massingInks(), ground: '#ffffff', lot: G.line, park: '#ffffff', road: '#ffffff', axis: G.line, ...(monoEnt ? { tree: '#ffffff', treeLight: '#ffffff', trunk: G.edge } : {}) } : massingInks();
   const { ring, reach } = scene;
   // A line model's massing (the yield's massing views, the report's built form) is black and white, with no colour
   // at all: every ink and every fill it is given goes to the grey of its own lightness (a neighbour's tone, what
@@ -411,7 +437,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const plain = line && !scene.mono;
   const bw = (c: string) => (plain ? greyOf(c) : c);
   const inks = plain ? { site: LINE.edge, future: bw(scene.inks.future), futureEdge: bw(scene.inks.futureEdge), envelope: bw(scene.inks.envelope), kerb: bw(scene.inks.kerb) } : scene.inks;
-  const look = lookOf(M, mono);
+  const look = lookOf(M, monoEnt);
   const turn = (TURN_DEG * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
   const cam = { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
@@ -454,7 +480,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const spanOf = (rg: XY[], cen: XY) => rg.reduce((m, p) => Math.max(m, Math.hypot(p.x - cen.x, p.y - cen.y)), 0);
 
   // What is drawn: the neighbours within reach, each with its future over it, and the built on the site.
-  const prisms: { key: number; group: Prism[] }[] = [];
+  const prisms: { key: number; group: Prism[]; built?: boolean }[] = [];
   const shown: AxoNeighbour[] = [];
   for (const nb of scene.neighbours) {
     const rings = nb.rings.filter((rg) => rg.length >= 3);
@@ -465,7 +491,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const z1 = known ? nb.heightM! : 6.2;
     if (!inFrame(cen, Math.max(z1, nb.future ?? 0), spanOf(rings[0], cen) + 2)) continue;
     shown.push(nb);
-    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: G.edge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), dashed: !known }
+    // (a white model's neighbour in its own outline where one is given: a zone's colour, on white walls and grey shade)
+    const own = !line && scene.mono && nb.edge ? nb.edge : null;
+    const group: Prism[] = [mono ? { rings, z0: 0, z1, fill: line && !scene.mono ? bw(nb.fill) : '#ffffff', edge: own ?? G.edge, edgeW: own ? ZONE_EDGE_W : 0.12, ...(line ? { edgeMm: LINE_MM.neighbour } : {}), ...(!line && scene.mono && nb.shade ? { shadeInk: nb.shade } : {}), dashed: !known }
       : { rings, z0: 0, z1, fill: nb.fill, edge: shade(nb.fill, M.gloss ? 0.78 : 0.55), edgeW: 0.12, dashed: !known, windows: known }];
     if (nb.future && nb.future > z1) group.push({ rings, z0: z1, z1: nb.future, fill: inks.future, edge: inks.futureEdge, edgeW: 0.12, ...(line ? { edgeMm: LINE_MM.future } : {}), dashed: true, dash: FUTURE_DASH, opacity: FUTURE_OPACITY });
     prisms.push({ key: depth(cen), group });
@@ -480,7 +508,22 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const built: Prism[] = (plain
     ? scene.built.map((pr) => ({ ...pr, fill: bw(pr.fill), edge: bw(pr.edge), ...(pr.cells ? { cells: pr.cells.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}), ...(pr.roof ? { roof: pr.roof.map((c) => ({ ...c, fill: bw(c.fill) })) } : {}) }))
     : scene.built).map((pr) => (line ? { ...pr, edgeMm: LINE_MM.built } : pr));
-  prisms.push({ key: 0, group: built });
+  // What is built, a building at a time, each in its own place among the neighbours: the prisms that stand on one
+  // another (their footprints overlap: a tower on its podium) are one building, drawn together bottom first, at the
+  // depth of its own middle. (They were one item at the site's middle, in the order they were given. On a wide site a
+  // neighbour beside one of them, nearer than the site's middle and farther than the building, was drawn over that
+  // building's wall, and the buildings were not sorted among themselves: Maroubra's four, in its solar access view.)
+  const touches = (a: Prism, b: Prism) => a.rings.some((ra) => b.rings.some((rb) => ra.some((p) => inRing(p, rb)) || rb.some((p) => inRing(p, ra))));
+  const part = built.map((_, i) => i);
+  const rootOf = (i: number): number => (part[i] === i ? i : (part[i] = rootOf(part[i])));
+  for (let i = 0; i < built.length; i++) for (let j = i + 1; j < built.length; j++) if (rootOf(i) !== rootOf(j) && touches(built[i], built[j])) part[rootOf(j)] = rootOf(i);
+  const buildings = new Map<number, Prism[]>();
+  built.forEach((pr, i) => { const r = rootOf(i); (buildings.get(r) ?? buildings.set(r, []).get(r)!).push(pr); });
+  for (const group of buildings.values()) {
+    const pts = group.flatMap((pr) => pr.rings.flat());
+    const cen = pts.reduce((t, p) => ({ x: t.x + p.x / pts.length, y: t.y + p.y / pts.length }), { x: 0, y: 0 });
+    prisms.push({ key: depth(cen), group, built: true });
+  }
   prisms.sort((p, q) => q.key - p.key);
 
   // Light from the north-west and above: a face is lit by how squarely it turns to it.
@@ -521,7 +564,9 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   }
   const SITE = inks.site;
   // (a line model's massing: the site a black dash-dot boundary on the ground, with no tint)
-  ground.push(plain
+  ground.push(inks.siteLine
+    ? `<path data-site d="${poly(ring.map((p) => P(p, 0)))}" fill="none" stroke="${inks.siteLine.ink}" stroke-width="${inks.siteLine.w}" stroke-linejoin="round"/>`
+    : plain
     ? `<path data-site d="${poly(ring.map((p) => P(p, 0)))}" fill="none" stroke="${SITE}" stroke-width="0.4" stroke-dasharray="3,1,0.6,1"/>`
     : `<path d="${poly(ring.map((p) => P(p, 0)))}" fill="${SITE}" fill-opacity="0.08" stroke="${SITE}" stroke-width="0.35"/>`);
   // Glossy (Kingfisher, Flamingo): each building casts a soft shadow on the ground, away from the light, as far as its height is tall by
@@ -594,7 +639,10 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         const lit = line ? 1 : (M.gloss ? 0.9 : 0.72) + (M.gloss ? 0.1 : 0.28) * Math.max(0, f.m.x * light.x + f.m.y * light.y);
         const facePts = [P(f.p, pr.z0), P(f.q, pr.z0), P(f.q, pr.z1), P(f.p, pr.z1)];
         const face = poly(facePts);
-        out.push(`<path d="${face}" fill="${hatch ? flat : shade(pr.fill, lit)}"${alpha} stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
+        // (toward the prism's shade ink where it has one: from its fill, full to the light, to the ink, turned from it)
+        const minLit = M.gloss ? 0.9 : 0.72, dark = Math.min(1, Math.max(0, (1 - lit) / (1 - minLit)));
+        const faceFill = hatch ? flat : pr.shadeInk ? mix(pr.fill, pr.shadeInk, dark) : shade(pr.fill, lit);
+        out.push(`<path d="${face}" fill="${faceFill}"${alpha} stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
         if (hatch) out.push(hatchFace(facePts, face, { pitch: hatch.pitch * (1 + 0.9 * Math.max(0, f.m.x * light.x + f.m.y * light.y)), w: hatch.w }));
         const celled = (pr.cells ?? []).some((c) => c.ring === ri && c.edge === f.i);
         // (a line model: its windows drawn on the wall; none over a wall coloured by its hours of sun, which is a grid already)
@@ -603,7 +651,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         // the glossy models, Flamingo and Kingfisher: no hatch at all)
         else if (pr.windows && !celled && !M.gloss) {
           const pitch = wallHatchPitch(f.m.x * light.x + f.m.y * light.y);
-          if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: shade(pr.fill, WALL_HATCH.ink) }));
+          if (pitch) out.push(hatchFace(facePts, face, { pitch, w: WALL_HATCH.w, ink: pr.shadeInk ? inkFor(pr.shadeInk, 0.35) : shade(pr.fill, WALL_HATCH.ink) }));
         }
         // the panels on this face, lit as it is, each outlined
         for (const c of pr.cells ?? []) {
@@ -615,12 +663,12 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
         }
         for (const zz of pr.storeys ?? []) {
           const [x1, y1] = P(f.p, zz), [x2, y2] = P(f.q, zz);
-          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : shade(pr.fill, 0.62)}" stroke-width="${line ? PW(LINE_MM.storey) : 0.08}"/>`);
+          out.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${line ? LINE.edge : pr.shadeInk ? inkFor(pr.shadeInk, 0.45) : shade(pr.fill, 0.62)}" stroke-width="${line ? PW(LINE_MM.storey) : 0.08}"/>`);
         }
       }
     });
     const roofD = pr.rings.map((rg) => poly(rg.map((p) => P(p, pr.z1)))).join('');
-    out.push(`<path d="${roofD}" fill="${line ? flat : shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
+    out.push(`<path d="${roofD}" fill="${line ? flat : pr.roofFill ?? shade(pr.fill, M.gloss ? 1.3 : 1.12)}"${alpha} fill-rule="evenodd" stroke="${pr.edge}" stroke-width="${ew}" stroke-linejoin="round"${dash}/>`);
     for (const c of pr.roof ?? []) out.push(`<path d="${poly(c.pts.map((p) => P(p, pr.z1)))}" fill="${c.fill}" stroke="#ffffff" stroke-width="0.07" stroke-linejoin="round"/>`);
     return out.join('');
   };
@@ -641,7 +689,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
       const joined = turfUnion(featureCollection(faces.map((f) => polygon(f)))) as any;
       const g = joined?.geometry;
       const rings: number[][][] = g?.type === 'Polygon' ? g.coordinates : g?.type === 'MultiPolygon' ? g.coordinates.flat() : [];
-      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#2e2e2e'}" stroke-width="${line ? PW(LINE_MM.silhouette) : 0.24}" stroke-linejoin="round"/>`;
+      return `<path d="${rings.map((rg) => poly(rg.slice(0, -1) as [number, number][])).join('')}" fill="none" stroke="${line ? '#000000' : '#000000'}" stroke-width="${line ? PW(LINE_MM.silhouette) : SILHOUETTE_W}" stroke-linejoin="round"/>`;
     } catch { return ''; }
   };
   // The trees: each a crown on a trunk, which the projection draws as a circle, a sphere's outline; none where a
@@ -764,7 +812,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const [cx, cy] = P(tr.p, zc), [bx, by] = P(tr.p, 0);
     if (look.crown === 'disc') {
       return `<line x1="${bx.toFixed(2)}" y1="${by.toFixed(2)}" x2="${cx.toFixed(2)}" y2="${cy.toFixed(2)}" stroke="${M.trunk}" stroke-width="0.25"/>` +
-        (mono ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${G.edge}" stroke-width="0.1"/>`
+        (monoEnt ? `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="#ffffff" stroke="${G.edge}" stroke-width="0.1"/>`
           : `<circle cx="${cx.toFixed(2)}" cy="${cy.toFixed(2)}" r="${tr.r.toFixed(2)}" fill="${M.tree}"/>` +
           `<circle cx="${(cx - 0.22 * tr.r).toFixed(2)}" cy="${(cy - 0.2 * tr.r).toFixed(2)}" r="${(0.66 * tr.r).toFixed(2)}" fill="${M.treeLight}"/>`);
     }
@@ -799,18 +847,18 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // white roof.
   // Kingfisher's traffic as an illustrator's isometric vehicles: whites, greys, a yellow and an orange, the glass dark,
   // the town's one thin contour round each
-  const kfCars = !mono && deckLook().id === 'kingfisher';
+  const kfCars = !monoEnt && deckLook().id === 'kingfisher';
   // Flamingo's traffic in line alone, as its people are: the same drawn vehicles, every part in the paper's cream with
   // the one thin line round it, the windows and the wheels in outline, a pale warm patch on the road under each
-  const LF = mono ? undefined : look.line;
+  const LF = monoEnt ? undefined : look.line;
   const drawnCars = kfCars || !!LF;
   // in Kingfisher's own colours: mostly warm whites and light greys, its terracotta, mint, pale blue, a cut of its deep
   // blue and its deep terracotta among them; the glass a dark slate of its blue; edged with the town's one contour
-  const CAR_INKS = mono ? ['#ffffff'] : LF ? [LF.fill] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
+  const CAR_INKS = monoEnt ? ['#ffffff'] : LF ? [LF.fill] : deckLook().id === 'heron' ? ['#f2f2f2', '#bdbdbd', '#8c8c8c', '#e2e2e2', '#5e5e5e'] : kfCars
     ? ['#f5f3ef', INK.red.solid, '#d9d6d1', INK.green.solid, '#f5f3ef', INK.blue.solid, tint(INK.blue.deep, 0.25), '#d9d6d1', INK.red.deep]
     : [vivid(INK.red.solid, 0.55, 0.45), vivid(INK.blue.solid, 0.5, 0.42), vivid(INK.orange.solid, 0.7, 0.5), '#f4f4f0'];
-  const WHITE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = mono ? G.glass : LF ? LF.fill : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
-  const PALE = mono ? '#ffffff' : LF ? LF.fill : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = mono ? G.chassis : LF ? LF.fill : kfCars ? '#6e7380' : '#4a4a4a';
+  const WHITE = monoEnt ? '#ffffff' : LF ? LF.fill : kfCars ? '#f5f3ef' : '#f4f4f0', GLASS = monoEnt ? G.glass : LF ? LF.fill : kfCars ? shade(INK.blue.deep, 0.62) : tint(INK.blue.solid, 0.78);
+  const PALE = monoEnt ? '#ffffff' : LF ? LF.fill : kfCars ? '#ece9e3' : '#e6e5df', CHASSIS = monoEnt ? G.chassis : LF ? LF.fill : kfCars ? '#6e7380' : '#4a4a4a';
   const VAN_INKS = [WHITE, WHITE, CAR_INKS[2 % CAR_INKS.length], WHITE, CAR_INKS[1 % CAR_INKS.length]];
   type Block = { s0: number; s1: number; hw: number; z0: number; z1: number; fill: string };
   const block = (s0: number, s1: number, hw: number, z0: number, z1: number, fill: string): Block => ({ s0, s1, hw, z0, z1, fill });
@@ -832,7 +880,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   };
   const vehicleSvg = (v: Vehicle, stacks: Block[][]): string => {
     const along = v.u.x * d.x + v.u.y * d.y;   // how much farther each metre forward stands
-    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: mono ? G.edge : kfCars ? shade(b.fill, 0.74) : '#3a3a3a', edgeW: line ? 0.07 : kfCars ? 0.05 : 0.1 });
+    const at = (b: Block): Prism => ({ rings: [corners({ ...v, c: { x: v.c.x + v.u.x * (b.s0 + b.s1) / 2, y: v.c.y + v.u.y * (b.s0 + b.s1) / 2 }, half: (b.s1 - b.s0) / 2, hw: b.hw })], z0: b.z0, z1: b.z1, fill: b.fill, edge: monoEnt ? G.edge : kfCars ? shade(b.fill, 0.74) : '#3a3a3a', edgeW: line ? 0.07 : kfCars ? 0.05 : 0.1 });
     const order = [...stacks].sort((p, q) => (q[0].s0 + q[0].s1) * along - (p[0].s0 + p[0].s1) * along);
     return `<g data-vehicle="${v.kind}">${order.map((st) => st.map((b) => prismSvg(at(b))).join('')).join('')}</g>`;
   };
@@ -914,11 +962,11 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // standing on the ground with a head over it; a rider every so often down the kerb side of the lane, two wheels
   // and a frame with the body over them; in the traffic's colours and a dark grey in turn. None down a lane, no
   // bicycle on a highway, none where a building or a vehicle stands, and none on the site.
-  const FIGURE_INKS = mono ? [G.figure] : look.people === 'figure'
+  const FIGURE_INKS = monoEnt ? [G.figure] : look.people === 'figure'
     ? ['#ffffff', '#2e2e33', CAR_INKS[0], CAR_INKS[1], '#e9c24b', tint(INK.red.solid, 0.45), '#ffffff', CAR_INKS[2]]
     : [...CAR_INKS.slice(0, 3), '#3a3a3a'];
   const SKIN = ['#f0c8a4', '#d69c74', '#a46c4a', '#6a4430'], LEGS = ['#2f3542', '#4b5d7e', '#3b3b3b', '#bfae92'];
-  const SPOKE = mono ? G.edge : '#3a3a3a';
+  const SPOKE = monoEnt ? G.edge : '#3a3a3a';
   const figures: { key: number; svg: () => string }[] = [];
   let pi = 0;
   const free = (c: XY) => Math.hypot(c.x, c.y) <= reach && inFrame(c, 2.2, 1.5) && !footprints.some((rg) => inRing(c, rg)) && !inRing(c, ring) && !traffic.some((v) => underVehicle(c, v, 0.6));
@@ -1080,13 +1128,16 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   // Everything that stands, farthest first: the neighbours and the built, the trees, the traffic and the people among them.
   const standing: { key: number; svg: () => string }[] = [
     // (a line model: what is built on the site in a heavier outline, drawn with it so what stands in front still covers it)
-    ...prisms.map(({ key, group }) => ({ key, svg: () => group.map(prismSvg).join('') + (line && group === built && !scene.silhouette ? silhouette(built) : '') })),
+    // (… and the firmer outline a scene asks round what is built, `silhouette`, so it reads through the neighbours'
+    // translucent futures: drawn with its building too, not over the whole drawing at the end. Over everything, the
+    // outline of a wall hidden behind a neighbour's roof stood on that roof, a white box of the scheme's that is not
+    // there: the west building at Maroubra, 1.1 m from No. 84, in its solar access view.)
+    ...prisms.map(({ key, group, built: ours }) => ({ key, svg: () => group.map(prismSvg).join('') + ((line || scene.silhouette) && ours ? silhouette(group) : '') })),
     ...trees.map((tr) => ({ key: depth(tr.p), svg: () => treeSvg(tr) })),
     ...traffic.map((v) => ({ key: depth(v.c), svg: () => (v.solids ? vehicleSolidsSvg(v, v.solids) : vehicleSvg(v, v.stacks)) })),
     ...figures,
   ].sort((a, b2) => b2.key - a.key);
   for (const item of standing) parts.push(item.svg());
-  if (scene.silhouette) parts.push(silhouette(built));
 
   // The envelopes, dashed at their tops; the height plane over the site.
   const over: string[] = [];
@@ -1094,7 +1145,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   if (scene.hob?.metres) {
     const hz = scene.hob.metres;
     // (a line model's massing: the plane a fine black dashed outline, nothing in it)
-    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${plain ? 'none' : SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="${plain ? 0.22 : 0.3}" stroke-dasharray="2.4,1.2"/>`);
+    // (no tint in it either where the site is one solid line: a wash of the accent over the roofs under it changes their colour)
+    over.push(`<path d="${poly(ring.map((p) => P(p, hz)))}" fill="${plain || inks.siteLine ? 'none' : SITE}" fill-opacity="0.05" stroke="${SITE}" stroke-width="${plain ? 0.22 : 0.3}" stroke-dasharray="2.4,1.2"/>`);
     for (const p of ring) { const [x1, y1] = P(p, 0), [x2, y2] = P(p, hz); over.push(`<line x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}" stroke="${SITE}" stroke-width="0.12" stroke-dasharray="1,1"/>`); }
   }
 
