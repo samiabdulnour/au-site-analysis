@@ -2532,6 +2532,17 @@ def sun_views(no, sun, hours=(9, 10, 11, 12, 13, 14, 15), reach=32, tall=0.6, as
                 if max(c[0] for c in poly_) < x0 or min(c[0] for c in poly_) > x1 or max(c[1] for c in poly_) < y0 or min(c[1] for c in poly_) > y1:
                     continue                                            # wholly outside the view
                 svg.append(f'<polygon points="{" ".join(f"{c[0]:.2f},{-c[1]:.2f}" for c in poly_)}" fill="{fill_}" stroke="{stroke_}" stroke-width="0.25" stroke-linejoin="round"/>')
+        # each new building's letter on its roof, sized to be read at a glance, as the plan names it
+        fs_ = max(4.0, (x1 - x0) / 22)
+        for b in scene['buildings']:
+            if b['kind'] != 'new':
+                continue
+            top_ = max(b['parts'], key=lambda q: q['z1'])
+            r_ = top_['ring']
+            u_, v_, _ = P(sum(q[0] for q in r_) / len(r_), sum(q[1] for q in r_) / len(r_), top_['z1'])
+            if x0 + fs_ < u_ < x1 - fs_ and y0 + fs_ < v_ < y1 - fs_:
+                svg.append(f'<text x="{u_:.1f}" y="{-v_:.1f}" font-size="{fs_:.1f}" font-weight="800" text-anchor="middle" dominant-baseline="middle" fill="#111" '
+                           f'paint-order="stroke" stroke="#fff" stroke-width="{fs_ * 0.3:.2f}">{H.escape(b["id"].split("-", 1)[1])}</text>')
         # a building far off that stands between the sun and ours is named where it covers us
         ox0, ox1, oy0, oy1 = min(xs), max(xs), min(ys), max(ys)
         for name, height, pts in far:

@@ -1,0 +1,768 @@
+{
+ "neighbourSetback": "adg",
+ "streetSetback": 3,
+ "blocks": [
+  [
+   "54-56 RILEY STREET",
+   "1 CROWN LANE",
+   "58 RILEY STREET",
+   "60 RILEY STREET",
+   "62-64 RILEY STREET",
+   "66-68 RILEY STREET",
+   "70-76 RILEY STREET"
+  ],
+  [
+   "89 CROWN STREET",
+   "4 CROWN LANE",
+   "93 CROWN STREET",
+   "95 CROWN STREET",
+   "97 CROWN STREET",
+   "10 CROWN LANE",
+   "99 CROWN STREET",
+   "105 CROWN STREET",
+   "107-113 CROWN STREET",
+   "115-119 CROWN STREET",
+   "121-129 CROWN STREET"
+  ]
+ ],
+ "consentStoreys": {
+  "93 CROWN STREET": 4,
+  "95 CROWN STREET": 4
+ },
+ "deck": "two-sheet",
+ "_": "Four scenarios of 27 November 2026 over the 70-76 Riley Street study, read at 0 degrees (the sun counted on a wall until it is parallel to it): 1, step 5 of 25 November, every block at 7 storeys; 2, the sketch of 27 November with every tower round us at 12 storeys; 3, the same at 14 storeys; 4, as 3 with Crown St north built as the LEP allows with the 30 % in-fill affordable housing bonus. 88-108 and 72-80 William St are taken away in every scenario. The scenarios before these are in the .future-sketch.json file.",
+ "site": {
+  "storeys": 14,
+  "units": null,
+  "label": "our site, sketch of 25 Nov",
+  "tower": {
+   "_": "The sketch of 25 November 2026: a three-storey podium over the lot (a taller ground floor and two residential levels) and the tower to 14 storeys, 6 m off our northern boundary (66-68 Riley St), 3 m off Riley Street and Crown Lane, 3 m off Stanley Lane. No apartment layout is given for this footprint, so its apartments are read in 8 m bays along its walls.",
+   "podium": 3,
+   "homesFrom": 2,
+   "levelZero": true,
+   "setbacks": {
+    "RILEY STREET": 3,
+    "CROWN LANE": 3,
+    "STANLEY LANE": 3,
+    "66-68 RILEY STREET": 6
+   },
+   "habitable": [
+    "CROWN LANE",
+    "66-68 RILEY STREET",
+    "RILEY STREET",
+    "STANLEY LANE"
+   ]
+  },
+  "_units": "Not known: the sketch has no plans, so nothing is said of its apartments; its sun is read off its facade (future_facade_sun.py)."
+ },
+ "retained": [
+  {
+   "address": "66-68 RILEY STREET",
+   "why": "21 apartments, strata of 2011"
+  },
+  {
+   "address": "107-113 CROWN STREET",
+   "why": "stays, as sketched"
+  }
+ ],
+ "scenarios": [
+  {
+   "title": "Step 5: every block at 7 storeys, 23.4 m",
+   "horizon": "The three blocks round us and ours each built to 7 storeys, the 23.4 m height of building: a four-storey podium over the lot and three storeys above it, set back.",
+   "lead": "Every block round us is built to 7 storeys, the 23.4 m height of building: across Riley Street, 67-107 Riley St as one site; north of us, 54-68 Riley St with 1 Crown Lane, 66-68 Riley St with them; across Crown Lane, the whole Crown Street block, 89 to 129 Crown St with 4 and 10 Crown Lane. Each is a four-storey podium over its lot and three storeys above it, held 3 m off its two long street frontages. The William Street towers are taken away, as in every scenario; 109 Riley St, the former hotel, is a heritage item (I436) and stays. Ours is built the same way: a four-storey podium over our lot and three storeys above it, built to our northern boundary so it joins the block north of us, and 3 m off Riley Street, Crown Lane and Stanley Lane, 7 storeys in all.",
+   "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
+    "67-107 Riley St: {W.area} m², {W.storeys} storeys at {W.fsr}; {W.sep} m from our tower.",
+    "54-68 Riley St + 1 Crown Lane: {N.area} m², {N.storeys} storeys at {N.fsr}; {N.sep} m from our tower.",
+    "89-129 Crown St: {C.area} m², {C.storeys} storeys at {C.fsr}; {C.sep} m from our tower.",
+    "The model's storeys are 4.5 m on the ground floor and 3.2 m above, so 7 storeys stand 23.7 m, 0.3 m over the 23.4 m height of building.",
+    "Our building: a four-storey podium and three storeys above it, 7 storeys; the upper storeys built to our northern boundary, joined to the block north of us, and 3 m off Riley Street, Crown Lane and Stanley Lane."
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
+   ],
+   "retained": [],
+   "parcels": [
+    {
+     "key": "W",
+     "name": "67-107 Riley St, across Riley Street",
+     "addresses": [
+      "77 RILEY STREET",
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 4,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 7,
+       "base": 4,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3,
+        "STREAM STREET": 3
+       }
+      }
+     ]
+    },
+    {
+     "key": "N",
+     "name": "54-68 Riley St + 1 Crown Lane, north of us",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET",
+      "66-68 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 4,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 7,
+       "base": 4,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3,
+        "CROWN LANE": 3
+       }
+      }
+     ]
+    },
+    {
+     "key": "C",
+     "name": "89-129 Crown St, across Crown Lane",
+     "addresses": [
+      "89 CROWN STREET",
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET",
+      "107-113 CROWN STREET",
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 4,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 7,
+       "base": 4,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN LANE@west": 3,
+        "CROWN STREET": 3
+       }
+      }
+     ]
+    }
+   ],
+   "site": {
+    "storeys": 7,
+    "tower": {
+     "podium": 4,
+     "setbacks": {
+      "RILEY STREET": 3,
+      "CROWN LANE": 3,
+      "STANLEY LANE": 3,
+      "66-68 RILEY STREET": 0
+     }
+    }
+   }
+  },
+  {
+   "title": "Every tower round us at 12 storeys",
+   "horizon": "Every tower round us at 12 storeys over a three-storey podium, with the setbacks and depths of the sketch of 27 November; 66-68 Riley St and 89 Crown St as they stand; 88-108 and 72-80 William St taken away.",
+   "lead": "The towers of the sketch of 27 November, each 12 storeys over a three-storey podium on its lot: 67-89 Riley St, 16 m deep, 3 m off Riley Street and Yurong Lane and 6 m off 91-93 Riley St; 54-64 Riley St with 1 Crown Lane, 3 m off Yurong Lane, Riley Street and Crown Lane and 6 m off 66-68 Riley St; Crown St north, now 93 to 113 Crown St with 4 and 10 Crown Lane, 22 m deep, 3 m off Crown Street, 12 m off 89 Crown St and 6 m off 115-119 Crown St; 115-129 Crown St, 22 m deep, 3 m off Crown Street and the lane and 6 m off 107-113 Crown St; 91-107 Riley St, 22 m deep, 3 m off Riley Street and 109 Riley St, 6 m off 67-89 Riley St. 66-68 Riley St and 89 Crown St stand as they are; the William Street towers are taken away, as in every scenario. Our building as sketched: a three-storey podium and a tower to 14 storeys, 6 m off our northern boundary and 3 m off Riley Street, Crown Lane and Stanley Lane. Ours stays at 14 storeys.",
+   "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
+    "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
+    "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
+    "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}.",
+    "115-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "91-107 Riley St: {E.area} m², {E.plate}, {E.storeys} storeys at {E.fsr}; {E.sep} m from our tower."
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
+   ],
+   "retained": [
+    {
+     "address": "66-68 RILEY STREET",
+     "why": "21 apartments, strata of 2011"
+    },
+    {
+     "address": "89 CROWN STREET",
+     "why": "stays, as sketched"
+    }
+   ],
+   "parcels": [
+    {
+     "key": "R",
+     "name": "67-89 Riley St (77 Riley St), 12 storeys",
+     "addresses": [
+      "77 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 12,
+       "base": 3,
+       "boundary": 6,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3,
+        "YURONG LANE": 3
+       },
+       "wings": {
+        "RILEY STREET": 16
+       }
+      }
+     ]
+    },
+    {
+     "key": "A",
+     "name": "54-64 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 12,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "YURONG LANE": 3,
+        "RILEY STREET": 3,
+        "CROWN LANE": 3
+       },
+       "boundaries": {
+        "66-68 RILEY STREET": 6
+       }
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, 93-113 + 4 and 10 Crown Lane",
+     "addresses": [
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET",
+      "107-113 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 12,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3
+       },
+       "boundaries": {
+        "89 CROWN STREET": 12,
+        "115-119 CROWN STREET": 6
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "115-129 Crown St",
+     "addresses": [
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 12,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3,
+        "CROWN LANE@south": 3
+       },
+       "boundaries": {
+        "107-113 CROWN STREET": 6
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 12,
+       "base": 3,
+       "boundary": 3,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3
+       },
+       "boundaries": {
+        "77 RILEY STREET": 6,
+        "109 RILEY STREET": 3
+       },
+       "wings": {
+        "RILEY STREET": 22
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "Every tower round us at 14 storeys",
+   "horizon": "Every tower round us at 14 storeys over a three-storey podium, with the setbacks and depths of the sketch of 27 November; 66-68 Riley St and 89 Crown St as they stand; 88-108 and 72-80 William St taken away.",
+   "lead": "The towers of the sketch of 27 November, each 14 storeys over a three-storey podium on its lot: 67-89 Riley St, 16 m deep, 3 m off Riley Street and Yurong Lane and 6 m off 91-93 Riley St; 54-64 Riley St with 1 Crown Lane, 3 m off Yurong Lane, Riley Street and Crown Lane and 6 m off 66-68 Riley St; Crown St north, now 93 to 113 Crown St with 4 and 10 Crown Lane, 22 m deep, 3 m off Crown Street, 12 m off 89 Crown St and 6 m off 115-119 Crown St; 115-129 Crown St, 22 m deep, 3 m off Crown Street and the lane and 6 m off 107-113 Crown St; 91-107 Riley St, 22 m deep, 3 m off Riley Street and 109 Riley St, 6 m off 67-89 Riley St. 66-68 Riley St and 89 Crown St stand as they are; the William Street towers are taken away, as in every scenario. Our building as sketched: a three-storey podium and a tower to 14 storeys, 6 m off our northern boundary and 3 m off Riley Street, Crown Lane and Stanley Lane.",
+   "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
+    "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
+    "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
+    "Crown St north: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}.",
+    "115-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "91-107 Riley St: {E.area} m², {E.plate}, {E.storeys} storeys at {E.fsr}; {E.sep} m from our tower."
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
+   ],
+   "retained": [
+    {
+     "address": "66-68 RILEY STREET",
+     "why": "21 apartments, strata of 2011"
+    },
+    {
+     "address": "89 CROWN STREET",
+     "why": "stays, as sketched"
+    }
+   ],
+   "parcels": [
+    {
+     "key": "R",
+     "name": "67-89 Riley St (77 Riley St), 14 storeys",
+     "addresses": [
+      "77 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 6,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3,
+        "YURONG LANE": 3
+       },
+       "wings": {
+        "RILEY STREET": 16
+       }
+      }
+     ]
+    },
+    {
+     "key": "A",
+     "name": "54-64 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "YURONG LANE": 3,
+        "RILEY STREET": 3,
+        "CROWN LANE": 3
+       },
+       "boundaries": {
+        "66-68 RILEY STREET": 6
+       }
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, 93-113 + 4 and 10 Crown Lane",
+     "addresses": [
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET",
+      "107-113 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3
+       },
+       "boundaries": {
+        "89 CROWN STREET": 12,
+        "115-119 CROWN STREET": 6
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "115-129 Crown St",
+     "addresses": [
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3,
+        "CROWN LANE@south": 3
+       },
+       "boundaries": {
+        "107-113 CROWN STREET": 6
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 3,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3
+       },
+       "boundaries": {
+        "77 RILEY STREET": 6,
+        "109 RILEY STREET": 3
+       },
+       "wings": {
+        "RILEY STREET": 22
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "title": "As 3, Crown St north to the LEP with the 30 % bonus",
+   "horizon": "As scenario 3, every other tower round us at 14 storeys; Crown St north instead built as the LEP allows with the 30 % in-fill affordable housing bonus: 23.4 m, 7 storeys, one block along Crown Street.",
+   "lead": "As scenario 3, with Crown St north, 93 to 113 Crown St with 4 and 10 Crown Lane, built to the LEP with the 30 % bonus the Housing SEPP gives in-fill affordable housing: the 18 m height of building on most of its lots and 30 % more, 23.4 m, 7 storeys, as step 5 has the block. It is one block between the lines of the mark-up of 27 November: the depth of the sketch's tower, 22 m, 3 m off Crown Street, and the whole length of the lots, built to 89 Crown St and to 115-119 Crown St, with no podium; the rest of the lot to Crown Lane is open. Every other building as in scenario 3.",
+   "notes": [
+    "88-108 William St (about 100 m) and 72-80 William St (about 69 m) are taken away, in every scenario.",
+    "67-89 Riley St: {R.area} m², {R.plate}, {R.storeys} storeys at {R.fsr}; {R.sep} m from our tower.",
+    "54-64 Riley St + 1 Crown Lane: {A.area} m², {A.plate}, {A.storeys} storeys at {A.fsr}; {A.sep} m from our tower.",
+    "Crown St north to the LEP + 30 %: {B.area} m², {B.plate}, {B.storeys} storeys at {B.fsr}; the LEP + 30 % allows 6,210 m², 3.44:1 (22 m and 3:1 on its northern lots, 18 m and 2.5:1 on the rest).",
+    "115-129 Crown St: {D.area} m², {D.plate}, {D.storeys} storeys at {D.fsr}; {D.sep} m from our tower.",
+    "91-107 Riley St: {E.area} m², {E.plate}, {E.storeys} storeys at {E.fsr}; {E.sep} m from our tower."
+   ],
+   "removed": [
+    "88-108 WILLIAM STREET",
+    "72-80 WILLIAM STREET"
+   ],
+   "retained": [
+    {
+     "address": "66-68 RILEY STREET",
+     "why": "21 apartments, strata of 2011"
+    },
+    {
+     "address": "89 CROWN STREET",
+     "why": "stays, as sketched"
+    }
+   ],
+   "parcels": [
+    {
+     "key": "R",
+     "name": "67-89 Riley St (77 Riley St), 14 storeys",
+     "addresses": [
+      "77 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 6,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3,
+        "YURONG LANE": 3
+       },
+       "wings": {
+        "RILEY STREET": 16
+       }
+      }
+     ]
+    },
+    {
+     "key": "A",
+     "name": "54-64 Riley St + 1 Crown Lane",
+     "addresses": [
+      "54-56 RILEY STREET",
+      "1 CROWN LANE",
+      "58 RILEY STREET",
+      "60 RILEY STREET",
+      "62-64 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "YURONG LANE": 3,
+        "RILEY STREET": 3,
+        "CROWN LANE": 3
+       },
+       "boundaries": {
+        "66-68 RILEY STREET": 6
+       }
+      }
+     ]
+    },
+    {
+     "key": "B",
+     "name": "Crown St north, LEP + 30 %, 7 storeys",
+     "addresses": [
+      "4 CROWN LANE",
+      "93 CROWN STREET",
+      "95 CROWN STREET",
+      "97 CROWN STREET",
+      "10 CROWN LANE",
+      "99 CROWN STREET",
+      "105 CROWN STREET",
+      "107-113 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "plate",
+       "storeys": 7,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3
+       },
+       "boundaries": {
+        "89 CROWN STREET": 0,
+        "115-119 CROWN STREET": 0
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "D",
+     "name": "115-129 Crown St",
+     "addresses": [
+      "115-119 CROWN STREET",
+      "121-129 CROWN STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 0,
+       "streetBoundary": 0,
+       "streets": {
+        "CROWN STREET": 3,
+        "CROWN LANE@south": 3
+       },
+       "boundaries": {
+        "107-113 CROWN STREET": 6
+       },
+       "wings": {
+        "CROWN STREET": 22
+       }
+      }
+     ]
+    },
+    {
+     "key": "E",
+     "name": "91-107 Riley St, across Riley Street",
+     "addresses": [
+      "91-93 RILEY STREET",
+      "95-97 RILEY STREET",
+      "99-107 RILEY STREET"
+     ],
+     "buildings": [
+      {
+       "type": "podium",
+       "storeys": 3,
+       "footprint": "lot"
+      },
+      {
+       "type": "plate",
+       "storeys": 14,
+       "base": 3,
+       "boundary": 3,
+       "streetBoundary": 0,
+       "streets": {
+        "RILEY STREET": 3
+       },
+       "boundaries": {
+        "77 RILEY STREET": 6,
+        "109 RILEY STREET": 3
+       },
+       "wings": {
+        "RILEY STREET": 22
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
