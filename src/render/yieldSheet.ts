@@ -20,7 +20,7 @@ import { esc } from './chrome.js';
 import { tpl, withTemplate, templateFor, deckLook, tint, inkFor, vivid, mix, CANARY_INK, type DeckLook } from './template.js';
 import { shortStreetName, type SheetMeta } from './sheet.js';
 import { atlasPage, coverPage, bookletCover, coverSite, coverCredit, type Cover, type DeckHtml, deckCss, zFlow, zBlock, zTable, brief, MAP_FONT, type Slide, type DeckRenderOptions } from './slides.js';
-import { drawAxonometric, shade, type AxoScene, type Prism } from './axonometric.js';
+import { drawAxonometric, cameraFitScale, shade, type AxoScene, type Prism } from './axonometric.js';
 import { INK, zFigures, zBars, niceAxis, fillShape, categoryFill, massingInks, heightBandOf, HEIGHT_BANDS, paletteRamp, type Fill } from './atlasKit.js';
 import { zoneToCategory } from './model.js';
 import { zoneFill, zoneOrder } from './lepPalette.js';
@@ -43,7 +43,7 @@ import {
   type XY, type YieldAssumptions, type YieldResult, type Use, type Tier, type UnitKind, type FutureControls, type ExistingBuilding,
 } from '../lib/yield.js';
 import { shadowHull } from '../lib/shadows.js';
-import { addedGround, shadeLevels, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, winterSun, SHADE_KINDS, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
+import { addedGround, shadeLevels, apartmentSun, addedShadow, adgSunHours, meetsSun, schemeBlocks, groundShadow, facadeSun, facadeSunAt, winterSun, SHADE_KINDS, type FacadeMoment, type ApartmentSun, type AddedShadow, type Block, type FacadeFace, type ShadeKind, type ShadeTarget } from '../lib/solarAccess.js';
 import { separations, type SeparationRow, type SeparationReading } from '../lib/separation.js';
 import { futureContext, FOOTPRINTS, type FutureBuilding, type FutureLot } from '../lib/futureContext.js';
 import { reshapeToComply, type Reshaped } from '../lib/reshape.js';
@@ -372,6 +372,8 @@ export interface PathSun {
    * is on its facade (Z. 2026-11: "the roof shouldn't be counted, coloured like that: we care only for facades").
    */
   facades: FacadeFace[];
+  /** Its faces at each whole hour from 9 to 3 on the shortest day: the cells in sun, and the share of its facade that is (the views from the sun). */
+  moments: FacadeMoment[];
 }
 
 /** The study's result behind a path, where the path has a scheme. */
@@ -447,7 +449,8 @@ export function pathSun(b: YieldBundle, s: YieldStudy, id: Scenario['id']): Path
   const facades = facadeSun(y, { context, future: s.future.buildings.length ? future : undefined, lat, lon, boundary: s.ring, blank: edgeKinds(s.ring, s.fronts).map((k) => k !== 'front') });
   const builtOut = separations(tiers, s.future.buildings.map((fb) => ({ rings: [fb.ring], storeys: fb.storeys })), s.ring, s.fronts)
     .map((r) => ({ ...r, name: `${s.future.buildings[r.index].name} · ${FOOTPRINTS[s.future.buildings[r.index].type].label}, ${s.future.buildings[r.index].storeys} st` }));
-  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades };
+  const moments = facadeSunAt(y, facades, { context, lat, lon });
+  const out: PathSun = { y, apartments, shadow, measured: { park: zoned, home: zoned, heritage: b.heritageItems !== undefined }, targets, separation, separationBuiltOut: builtOut, facades, moments };
   done.set(id, out);
   return out;
 }
@@ -719,6 +722,8 @@ function zoneInk(zone: string | undefined, look: DeckLook): string | null {
   const cat = zoneToCategory(zone), c = cat ? look.categories.find((x) => x.id === cat) : undefined;
   return c ? soft(vivid(c.fill, 0.5, 0.5)) : null;
 }
+/** A view from the sun: a cell of the facade in sun at that moment, the style's sun yellow (its 3–4 h band), and one in shadow, a mid grey. */
+const sunEyeInks = () => ({ sun: sunBands()[4].fill, shade: '#b9b9b9' });
 /** The trees' inks for the key. */
 function treeInks() { const M = massingInks(); return deckLook().id === 'heron' ? { fill: '#ffffff', edge: '#1a1a1a' } : { fill: M.tree, edge: shade(M.tree, 0.7) }; }
 /** What the massing's note says of its trees, its streets and its traffic, for the page's sources line. */
@@ -839,7 +844,11 @@ const ENVELOPE = '#6a6a6a';
  * read), or what stands there today, or neither (the site alone); `behind` turns the camera to the opposite corner,
  * so a compliance sheet's second view shows the faces the first hides.
  */
-interface Scheme { y?: YieldResult; facades?: FacadeFace[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[] }
+interface Scheme { y?: YieldResult; facades?: FacadeFace[]; behind?: boolean; /** The town in white, so the scheme's colours read alone (the compliance sheets). */ mono?: boolean; /** How much town round the site the frame takes in, metres (FOCUS_M where unset). */ focusM?: number; standing?: { rings: XY[][]; heightM?: number; storeys?: number }[];
+  /** A view from somewhere else than the massing's own corner: a view from the sun, at its bearing and altitude. With `lit`, the cells of `facades` in sun at that moment, face by face: each drawn in sun or in shadow, not in its hours. */
+  camera?: { azimuthDeg: number; elevationDeg: number }; lit?: boolean[][];
+  /** The drawing's scale, millimetres to the metre, where a set of views share one. */
+  scale?: number }
 
 
 /** The storey heights the study builds to: the bottom and the top of storey s. */
@@ -893,9 +902,12 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     if (top < t.from || !t.plate.length) return;
     // each face's cells in the colour of their band of hours (a face's a and b run the way that keeps the building on
     // the left; its edge in the plate may run the other way)
-    const cells = (scheme.facades ?? []).filter((f) => f.tier === ti && !f.blank).flatMap((f) => {
+    const cells = (scheme.facades ?? []).flatMap((f, fi) => {
+      if (f.tier !== ti || f.blank) return [];
       const p = t.plate[f.ring][f.edge], same = Math.hypot(f.a.x - p.x, f.a.y - p.y) < 1e-6;
-      return f.cells.map((c) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: bandOf(c.hours).fill, flat: true }));
+      // (a view from the sun: a cell in sun at that moment, or in shadow)
+      const fillOf = (c: FacadeFace['cells'][number], ci: number) => (scheme.lit ? (scheme.lit[fi]?.[ci] ? sunEyeInks().sun : sunEyeInks().shade) : bandOf(c.hours).fill);
+      return f.cells.map((c, ci) => ({ ring: f.ring, edge: f.edge, t0: same ? c.t0 : 1 - c.t1, t1: same ? c.t1 : 1 - c.t0, z0: z.bottom(c.storey), z1: z.top(c.storey), fill: fillOf(c, ci), flat: true }));
     });
     // (its roof in the colour itself, as its plan and the keys draw it: lit, it was a paler yellow than theirs; white
     // where its facades are coloured by their sun, the roof not being counted: Z. 2026-11, "make the roof white")
@@ -916,13 +928,15 @@ function axonometric(b: YieldBundle, s: YieldStudy, box: { x: number; y: number;
     kerbs: (b.kerbs ?? []).map((kl) => local(kl.coords)),
     lots: parcelsOf(b).map((lot) => ({ rings: lot.rings.map(local), park: lot.zone ? zoneToCategory(lot.zone) === 'openSpace' : false })),
     trees: (b.trees ?? []).map((tr) => ({ p: s.toLocal(tr.lon, tr.lat), r: Math.max(1.2, Math.min(8, tr.canopyM / 2)) })),
-    hob: s.hob?.metres ? { metres: s.hob.metres, note: `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(s.hob.metres))}m ABOVE THE GROUND, ABOVE THE FRAME` } : undefined,
-    envelopes: y && z ? y.tiers.map((t) => ({ rings: t.envelope, z: z.top(t.to) })) : [],
+    hob: s.hob?.metres && !scheme.camera ? { metres: s.hob.metres, note: `HEIGHT OF BUILDING PLANE ${s.hob.rl ? `RL ${fmt(s.hob.value, 1)}, ` : ''}${fmt(Math.round(s.hob.metres))}m ABOVE THE GROUND, ABOVE THE FRAME` } : undefined,
+    envelopes: y && z && !scheme.camera ? y.tiers.map((t) => ({ rings: t.envelope, z: z.top(t.to) })) : [],
     inks: { site: siteInk(), future: scheme.mono ? '#ffffff' : Y.future, futureEdge: scheme.mono ? '#8f8f8f' : Y.futureEdge, envelope: Y.envelope, kerb: Y.kerb, siteLine: { ink: SITE_LINE.ink, w: SITE_LINE.massing } },
     mono: scheme.mono,
     // (a path's own spread keeps the style's trees, people and traffic; the solar access views stay white, their colour the facades' sun)
     ...(scheme.mono && !scheme.facades && process.env.YIELD_ISO_ENTOURAGE !== 'white' ? { entourage: 'style' as const } : {}),
-    futures: s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
+    // (a view from the sun is today's town alone, as its count is: no future over it, no tree, no traffic)
+    futures: scheme.camera ? [] : s.future.buildings.map((fb) => ({ rings: [fb.ring], heightM: fb.heightM })),
+    ...(scheme.camera ? { camera: scheme.camera, bare: true, ...(scheme.scale ? { scale: scheme.scale } : {}) } : {}),
     // (always: white in a white town, what is built is told by its heavy black outline)
     silhouette: true,
     treesOnSite: !scheme.y,
@@ -1979,7 +1993,7 @@ function deckOrder(b: YieldBundle, s: YieldStudy, paths: Path[]): { paths: { p: 
   let page = 1;
   const out = paths.filter(drawnPath).map((p) => {
     const test = tested.find((t) => t.p.sc.id === p.sc.id), at = ++page;
-    if (test) page += hasHomes(test.ps) ? 2 : 1;   // its shadow and separation, then its solar access where it holds apartments
+    if (test) page += hasHomes(test.ps) ? 3 : 1;   // its shadow and separation, then its solar access and its views from the sun where it holds apartments
     return { p, page: at, ...(test ? { test } : {}) };
   });
   return { paths: out, last: page + 1 };
@@ -2352,9 +2366,9 @@ const TEST_NAME: Record<Scenario['id'], string> = {
   affordableBonus: 'Affordable bonus', envelopeToHeight: 'Envelope to the height',
 };
 /** The two pages an option is tested on: what each is called after the option's name, and how its id ends. */
-const TEST_PAGE = { solar: { title: 'solar access', id: 'solar_access' }, shadow: { title: 'shadow', id: 'shadow_and_separation' } } as const;
+const TEST_PAGE = { solar: { title: 'solar access', id: 'solar_access' }, shadow: { title: 'shadow', id: 'shadow_and_separation' }, sunEye: { title: 'from the sun', id: 'views_from_the_sun' } } as const;
 /** Whether a page is one of an option's test pages, by its id. */
-export const isTestPage = (id: string, kind?: keyof typeof TEST_PAGE): boolean => (kind ? [kind] : (['solar', 'shadow'] as const)).some((k) => id.endsWith(`_${TEST_PAGE[k].id}`));
+export const isTestPage = (id: string, kind?: keyof typeof TEST_PAGE): boolean => (kind ? [kind] : (['solar', 'shadow', 'sunEye'] as const)).some((k) => id.endsWith(`_${TEST_PAGE[k].id}`));
 
 /** The faces of an option grouped by the way they look (the outside's and a courtyard's apart): their area, and their hours, averaged by area, today and built out. */
 function facadeRows(ps: PathSun, hours: number): { courtyard: boolean; dir: string; bearing: number; areaSqm: number; average: number; share: number; averageFuture?: number; shareFuture?: number }[] {
@@ -2484,6 +2498,50 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
     + axo(true, AXO_H, `${fid}-b`) + labelAt(PAGE_X, AXO_H, IN, ['From the opposite corner'])
     + `<div class="abs" style="left:${PAGE_X}mm;top:${AXO_H - 0.4}mm;width:${PAGE_W}mm;height:0.8mm;background:#ffffff"></div>`;
 
+  // The views from the sun (Z. 2026-11: "please add sun eye views", with a sheet of one: each whole hour from 9 to 3
+  // a view along the sun's rays, the last cell the share of the facade that has its hours; "it should respect the
+  // style, but the layout could be pretty much like this"). Seven views two across and four down the page, each
+  // named with its hour and where the sun stands; what a view shows of the facade is in sun at that hour, a cell
+  // drawn in the style's sun yellow, and what a neighbour or the building itself hides is in shadow. The town a
+  // white model and bare: no trees, no traffic, no future, as the count has none. The eighth cell the figure.
+  const EYE_W = PAGE_W / 2, EYE_H = PAGE_H / 4;
+  const eyeAt = (i: number) => ({ left: PAGE_X + (i % 2) * EYE_W, top: Math.floor(i / 2) * EYE_H });
+  // (one scale for the seven: the smallest any of them would take, so the building is the same size hour to hour)
+  const eyeBox = { x: 2, y: IN + 7, w: EYE_W - 4, h: EYE_H - IN - 8 }, EYE_FOCUS = 5;
+  const eyeCam = (m: FacadeMoment) => ({ azimuthDeg: m.sun.azimuthDeg, elevationDeg: m.sun.altitudeDeg });
+  const eyeTop = ps.y.tiers.length ? Math.max(...ps.y.tiers.map((t) => storeyZ(ps.y).top(Math.min(t.to, ps.y.storeys)))) : 0;
+  const eyeScale = ps.moments.length ? Math.min(...ps.moments.map((m) => cameraFitScale(s.ring, eyeTop, EYE_FOCUS, eyeCam(m), eyeBox))) : undefined;
+  const eyeViews = !homes ? '' : ps.moments.map((m, i) => {
+    const { left, top } = eyeAt(i);
+    return figureAt(left, top, EYE_W, EYE_H, axonometric(b, s, eyeBox,
+      { y: ps.y, facades: ps.facades, focusM: EYE_FOCUS, mono: true, camera: eyeCam(m), lit: m.lit, scale: eyeScale }, `${fid}-s${i}`))
+      + labelAt(left, top, IN, [clock(m.sun.clockMin), `sun at ${Math.round(m.sun.azimuthDeg)}°, ${Math.round(m.sun.altitudeDeg)}° up`]);
+  }).join('');
+  // the facade's share with its hours, by area; with none; and its hours on average
+  const zs = storeyZ(ps.y);
+  const facade = ps.facades.filter((fc) => !fc.blank).flatMap((fc) => fc.cells.map((cl) => ({ a: (cl.t1 - cl.t0) * fc.lengthM * (zs.top(cl.storey) - zs.bottom(cl.storey)), hours: cl.hours })));
+  const facadeA = facade.reduce((t, cl) => t + cl.a, 0) || 1;
+  const facadeOk = facade.filter((cl) => cl.hours >= h - 1e-9).reduce((t, cl) => t + cl.a, 0) / facadeA, facadeNone = facade.filter((cl) => cl.hours < 0.25 - 1e-9).reduce((t, cl) => t + cl.a, 0) / facadeA;
+  const facadeMean = facade.reduce((t, cl) => t + cl.a * cl.hours, 0) / facadeA;
+  const pc = (k: number) => `${Math.round(k * 100)}%`;
+  const eyeFigure = (() => {
+    const { left, top } = eyeAt(ps.moments.length);
+    return `<div class="abs" data-sun-eye-figure="1" style="left:${left + IN}mm;top:${top + IN + 2}mm;width:${EYE_W - 2 * IN - 4}mm;font-family:${tpl().font};color:${tpl().ink}">`
+      + `<div style="font-size:46pt;font-weight:700;line-height:0.95;letter-spacing:-0.02em">${pc(facadeOk)}</div>`
+      + `<div style="font-size:8.5pt;font-weight:700;line-height:1.25;margin-top:2.6mm">of its facade has ${h} hours of sun or more, 9 am to 3 pm on 21 June.</div>`
+      + `<div style="font-size:7pt;line-height:1.35;margin-top:1.8mm;color:#6f6f6f">No sun at all on ${pc(facadeNone)} of it; on average ${fmt(facadeMean, 1)} h. Blank walls and roofs are not counted.</div></div>`;
+  })();
+  const eyeFigures = eyeViews + (homes ? eyeFigure : '');
+  const eyeRows: TRow[] = ps.moments.map((m) => ({ cells: [esc(clock(m.sun.clockMin)), `${Math.round(m.sun.azimuthDeg)}° · ${esc(compass(m.sun.azimuthDeg))}`, `${Math.round(m.sun.altitudeDeg)}°`, pc(m.share)] }));
+  const eyeBlocks = [zBlock('Its facade in sun, hour by hour', ytable([{ head: 'At', w: '22mm' }, { head: 'The sun stands', w: '44mm' }, { head: 'Above the horizon', r: true, w: '30mm' }, { head: 'Facade in sun', r: true }], eyeRows, true)),
+    zBlock('Sun on each facade', faceTable)];
+  const best = ps.moments.reduce((t, m) => (m.share > t.share ? m : t), ps.moments[0]), worst = ps.moments.reduce((t, m) => (m.share < t.share ? m : t), ps.moments[0]);
+  const eyeSays = !homes || !ps.moments.length ? '' : brief([
+    `${pc(facadeOk)} of its facade has ${h} hours of sun or more between 9 am and 3 pm at mid winter; ${pc(facadeNone)} has none.`,
+    `Most of it is in sun at ${clock(best.sun.clockMin)}, ${pc(best.share)}; least at ${clock(worst.sun.clockMin)}, ${pc(worst.share)}.`,
+    'Each view looks along the sun\'s rays at that hour: what the sun sees is in sun, what it cannot see is in shadow.',
+  ], 560);
+
   // Shadow and separation: the path's plan, the whole page, at the overview's scale, with every building's shadow
   // each hour from 9 to 3 (the neighbours at the heights the sun study gives them, two storeys where none is
   // recorded; the envelope's swept exactly) laid one soft layer over the last, and the envelope's own at 9 am, noon
@@ -2601,6 +2659,14 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
   const stripes = (cs: string[]) => cs.map((c, i) => `<rect x="${((i * 5) / cs.length).toFixed(2)}" y="0.3" width="${(5 / cs.length + 0.02).toFixed(2)}" height="3" fill="${c}"/>`).join('');
   const pinkOverOrange = R.pink.map((c, i) => `<rect x="${((i * 5) / 4).toFixed(2)}" y="0.3" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${c}"/><rect x="${((i * 5) / 4).toFixed(2)}" y="1.8" width="${(5 / 4 + 0.02).toFixed(2)}" height="1.5" fill="${R.orange[i]}"/>`).join('');
   const bwSwatch = LOOK.bw === 'black' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#2a2c30"/>` : LOOK.bw === 'grey' ? `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#d3d5d8"/>` : `<rect x="0.4" y="0.6" width="4.2" height="2.4" fill="#ffffff" stroke="#1c1c1c" stroke-width="0.3"/>`;
+  const eyeLegend: LegendEntry[] = [
+    { swatch: KEY.site, label: 'The site' },
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${sunEyeInks().sun}" stroke="#ffffff" stroke-width="0.15"/><path d="M1.8,0.5V3.1M3.2,0.5V3.1M0.4,1.8H4.6" stroke="#ffffff" stroke-width="0.15"/>`, label: 'Its facade in sun at that hour, cell by cell' },
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="${sunEyeInks().shade}" stroke="#ffffff" stroke-width="0.15"/><path d="M1.8,0.5V3.1M3.2,0.5V3.1M0.4,1.8H4.6" stroke="#ffffff" stroke-width="0.15"/>`, label: 'Its facade in shadow at that hour' },
+    { swatch: KEY.use('residential'), label: 'Its blank walls and its roofs, white: not counted' },
+    { swatch: `<path d="M0.4,0.5H4.6V3.1H0.4Z" fill="#ffffff" stroke="#8f8f8f" stroke-width="0.2"/>`, label: `Neighbours in white at their heights${solarTown.words}; no trees, no future over them` },
+    ...solarZones,
+  ];
   const planTown = LOOK.bw === 'white' ? townEntries(b, deckLook(), false, plan.zones) : { entries: [], words: '' }, planZones = planTown.entries;
   const shadowLegend: LegendEntry[] = [
     { swatch: KEY.site, label: 'The site' },
@@ -2652,7 +2718,10 @@ function complianceSheets(b: YieldBundle, s: YieldStudy, entry: { p: Path; ps: P
       sources: `${shadowNote(b)} ${SEPARATION_NOTE} Indicative, for the design to confirm.${homes ? ` Its apartments' sun is on page ${page(n + 1)}.` : ''} ${closing}` },
     ...(homes ? [{ id: `${page(n + 1)}_${slug}_${TEST_PAGE.solar.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.solar.title}`, subtitle: subtitleOf(b, s), textHtml: '',
       figureHtml: zFlow(solarBlocks) + solarFigures, full: true, narrative: solarSays, accent: inks().accent, legend: solarLegend,
-      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}. ${closing}` }] : []),
+      sources: `${sunNote(b, s)} Indicative, for a solar access study and the design to confirm. Its plan, its shadow and its separations are on page ${page(n)}, its views from the sun on page ${page(n + 2)}. ${closing}` },
+    { id: `${page(n + 2)}_${slug}_${TEST_PAGE.sunEye.id}`, title: `${TEST_NAME[id]}: ${TEST_PAGE.sunEye.title}`, subtitle: subtitleOf(b, s), textHtml: '',
+      figureHtml: zFlow(eyeBlocks) + eyeFigures, full: true, narrative: eyeSays, accent: inks().accent, legend: eyeLegend,
+      sources: `Views from the sun at mid winter (21 June), on the hour from 9 am to 3 pm AEST, each along the sun's rays at that hour: its bearing from north and its height over the horizon are over each view. Every building at its recorded height, two storeys where none is recorded, the ground flat, no trees. A cell of the facade is read at its middle, 1 m above its floor. Indicative, for a solar access study and the design to confirm. Its hours of sun are on page ${page(n + 1)}. ${closing}` }] : []),
   ];
 }
 

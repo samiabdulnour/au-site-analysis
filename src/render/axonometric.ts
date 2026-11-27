@@ -118,6 +118,17 @@ export interface AxoScene {
    * "the Kingfisher isometry has different trees and people normally".) Heron's line model keeps its own.
    */
   entourage?: 'style';
+  /**
+   * The view, where it is not the massing's own (off the main frontage's corner, looking 35° down): the bearing the
+   * camera stands at from the site, degrees clockwise from north, and its height over the horizon. A view from the
+   * sun is the sun's bearing and its altitude: what it shows is in sun, what it hides is in shadow. The light is the
+   * camera's then.
+   */
+  camera?: { azimuthDeg: number; elevationDeg: number };
+  /** The drawing's scale, millimetres to the metre, where a set of views fitted to the site (`focusM`) share one (cameraFitScale); the view stays centred on what it would have fitted. */
+  scale?: number;
+  /** A study model: no trees, no traffic, no people, nothing that the sun study does not count. */
+  bare?: boolean;
 }
 
 /** The white model's greys: its edges, its ground lines, its kerbs, its people. */
@@ -421,6 +432,22 @@ export function frameReachM(frameM: number, box: { w: number; h: number }, siteR
   return Math.hypot(frameM / 2, depth / 2) + siteRadiusM + 90;
 }
 
+/**
+ * The scale (millimetres to the metre) a view from `camera`, fitted to the site and `focusM` of town round it up to
+ * `topM` (what is built on it), takes in `box`: several views of one scheme, each from its own camera, share the
+ * smallest, so the building is the same size in each (the views from the sun, hour by hour).
+ */
+export function cameraFitScale(ring: XY[], topM: number, focusM: number, camera: { azimuthDeg: number; elevationDeg: number }, box: { w: number; h: number }): number {
+  const az = (camera.azimuthDeg * Math.PI) / 180, el = (camera.elevationDeg * Math.PI) / 180;
+  const d = { x: -Math.sin(az), y: -Math.cos(az) }, r = { x: d.y, y: -d.x }, sinE = Math.sin(el), cosE = Math.cos(el);
+  const P = (p: XY, z: number): [number, number] => [p.x * r.x + p.y * r.y, -((p.x * d.x + p.y * d.y) * sinE + z * cosE)];
+  const xs0 = ring.map((p) => p.x), ys0 = ring.map((p) => p.y), m = focusM;
+  const sq = [{ x: Math.min(...xs0) - m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.max(...ys0) + m }, { x: Math.min(...xs0) - m, y: Math.max(...ys0) + m }];
+  const pts = [...sq.map((p) => P(p, 0)), ...ring.flatMap((p) => [P(p, 0), P(p, topM)])];
+  const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+  return Math.min(box.w / (Math.max(...xs) - Math.min(...xs) || 1), box.h / (Math.max(...ys) - Math.min(...ys) || 1));
+}
+
 export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): string {
   // Heron draws a line model, every drawing of it; a white model (the compliance views) is one in greys
   const line = deckLook().id === 'heron';
@@ -440,10 +467,11 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const look = lookOf(M, monoEnt);
   const turn = (TURN_DEG * Math.PI) / 180;
   const nx = scene.frontNormal.x, ny = scene.frontNormal.y;
-  const cam = { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
+  const camAz = scene.camera ? (scene.camera.azimuthDeg * Math.PI) / 180 : 0;
+  const cam = scene.camera ? { x: Math.sin(camAz), y: Math.cos(camAz) } : { x: nx * Math.cos(turn) - ny * Math.sin(turn), y: nx * Math.sin(turn) + ny * Math.cos(turn) };
   const d = { x: -cam.x, y: -cam.y };                 // the view direction, horizontal
   const r = { x: d.y, y: -d.x };                       // the screen's right
-  const elev = (ELEV_DEG * Math.PI) / 180, sinE = Math.sin(elev), cosE = Math.cos(elev);
+  const elev = ((scene.camera?.elevationDeg ?? ELEV_DEG) * Math.PI) / 180, sinE = Math.sin(elev), cosE = Math.cos(elev);
   const P = (p: XY, z: number): [number, number] => [p.x * r.x + p.y * r.y, -((p.x * d.x + p.y * d.y) * sinE + z * cosE)];
   const depth = (p: XY) => p.x * d.x + p.y * d.y;
 
@@ -527,7 +555,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   prisms.sort((p, q) => q.key - p.key);
 
   // Light from the north-west and above: a face is lit by how squarely it turns to it.
-  const light = { x: -0.55, y: 0.83 };
+  const light = scene.camera ? cam : { x: -0.55, y: 0.83 };
   const parts: string[] = [];
   const poly = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}Z`;
   const open = (pts: [number, number][]) => `M${pts.map(([px, py]) => `${px.toFixed(2)},${py.toFixed(2)}`).join('L')}`;
@@ -712,7 +740,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const ux = (best.x - p.x) / (bd || 1), uy = (best.y - p.y) / (bd || 1), q = { x: best.x + ux * 1.6, y: best.y + uy * 1.6 };
     return onRoad(q) ? undefined : q;
   };
-  const trees = scene.trees.flatMap((tr) => { const p = offRoad(tr.p); return p ? [{ ...tr, p }] : []; })
+  const trees = (scene.bare ? [] : scene.trees).flatMap((tr) => { const p = offRoad(tr.p); return p ? [{ ...tr, p }] : []; })
     .filter((tr) => Math.hypot(tr.p.x, tr.p.y) <= reach + 10 && inFrame(tr.p, 4 + 3 * tr.r, tr.r + 2) && !footprints.some((rg) => inRing(tr.p, rg)) && (scene.treesOnSite || !inRing(tr.p, ring)));
   // Illustrated, each tree takes its green by its place, and a few small ones stand narrow and upright. Its crown is
   // one of a few stamps, each shape in each green drawn once at a radius of one and placed at the tree's size.
@@ -954,7 +982,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     return `<g data-vehicle="${v.kind}">${patch}${[...solids].sort((p, q) => mid(q) * along - mid(p) * along).map((so) => solidSvg(v, so)).join('')}</g>`;
   };
   // the colours go round in the order the vehicles were placed, nearest the site first
-  const traffic = placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes, within: framed ? (p) => inFrame(p, 4.5, 9) : undefined }).map((v) => {
+  const traffic = (scene.bare ? [] : placeTraffic(cw, { reach, footprints, busRoutes: scene.busRoutes, within: framed ? (p) => inFrame(p, 4.5, 9) : undefined })).map((v) => {
     const stacks = stacksOf(v.kind);
     return { ...v, stacks, solids: drawnCars ? solidsOf(v.kind, stacks[stacks.length - 1][0].fill) : undefined };
   });
@@ -1038,7 +1066,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     const [ax, ay] = hub(-0.55), [bx, by] = hub(0.55);
     return `<circle cx="${ax.toFixed(2)}" cy="${ay.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="0.34" fill="none" stroke="${SPOKE}" stroke-width="0.12"/><line x1="${ax.toFixed(2)}" y1="${ay.toFixed(2)}" x2="${bx.toFixed(2)}" y2="${by.toFixed(2)}" stroke="${SPOKE}" stroke-width="0.12"/>${body(c, 0.8, 1.75, fill)}`;
   };
-  for (const { axis, left, right, road } of cw.axes) {
+  for (const { axis, left, right, road } of scene.bare ? [] : cw.axes) {
     if (road.hierarchy >= 7) continue;
     for (const side of [1, -1]) {
       const path = (side > 0 ? left : right) + 1.6;   // the footpath, past the kerb
@@ -1070,7 +1098,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     }
   }
   // A crowd: people in the parks, in ones, twos and threes, about one group to every 300 m² of park.
-  if (look.crowd) for (const lot of scene.lots) {
+  if (look.crowd && !scene.bare) for (const lot of scene.lots) {
     if (!lot.park) continue;
     for (const rg of lot.rings) {
       if (rg.length < 3) continue;
@@ -1163,7 +1191,8 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
     pts.length = 0;
     const siteTop = Math.max(12, ...built.map((pr) => pr.z1));
     planeFits = planeZ <= siteTop * 1.6;
-    const zF = planeFits ? planeZ : siteTop * 1.25;
+    // (a view from the sun has no plane over it: to the top of what is built)
+    const zF = scene.camera ? Math.max(0, ...built.map((pr) => pr.z1)) : planeFits ? planeZ : siteTop * 1.25;
     const xs0 = ring.map((p) => p.x), ys0 = ring.map((p) => p.y), m = scene.focusM;
     const sq = [{ x: Math.min(...xs0) - m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.min(...ys0) - m }, { x: Math.max(...xs0) + m, y: Math.max(...ys0) + m }, { x: Math.min(...xs0) - m, y: Math.max(...ys0) + m }];
     for (const p of sq) pts.push(P(p, 0));
@@ -1172,7 +1201,7 @@ export function drawAxonometric(scene: AxoScene, box: AxoBox, id: string): strin
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
   // (a filled frame's fit was settled before anything was drawn)
-  const k = framed ? framed.k : Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
+  const k = framed ? framed.k : scene.scale ?? Math.min(box.w / (x1 - x0 || 1), box.h / (y1 - y0 || 1));
   const tx = framed ? framed.tx : slideClear(k, box.x + (box.w - (x1 - x0) * k) / 2 - x0 * k);
   const ty = framed ? framed.ty : box.y + (box.h - (y1 - y0) * k) / 2 - y0 * k;
   const note = (line: number, ink: string, text: string) =>

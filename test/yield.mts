@@ -291,7 +291,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     const lowS = yieldStudy(lowB), lowDeck = renderYieldDeck(lowB, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false });
     const lowComp = lowDeck.slides.map((sl) => sl.id).filter((i) => isTestPage(i));
     check('compliance: what stands under the controls is no path, yet its compliance is shown', lowS.retained === undefined && !!lowS.standing && /stands_today_shadow_and_separation$/.test(lowComp[0] ?? '') && /stands_today_solar_access$/.test(lowComp[1] ?? ''), lowComp.join(' '));
-    check('compliance: then the designed massings\'', lowComp.length >= 4 && lowComp.slice(2).every((i) => !/stands_today/.test(i)), lowComp.join(' '));
+    check('compliance: then the designed massings\'', lowComp.length >= 6 && lowComp.slice(3).every((i) => !/stands_today/.test(i)), lowComp.join(' '));
   }
 
   // The low and mid-rise housing controls: in a low density zone near a town centre, one scheme across the whole site.
@@ -325,7 +325,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     // there is nothing, don't print it". The path keeps its row in the overview's table, with no page.
     const r2Deck = renderYieldDeck(r2, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false });
     const r2Ids = r2Deck.slides.map((sl) => sl.id).join(',');
-    check('a path that builds nothing has no spread: the deck goes from the overview to the scheme the policy gives', r2Ids === '01_planning_yield,02_low_mid_rise,03_low_mid_rise_shadow_and_separation,04_low_mid_rise_solar_access,05_controls_and_assumptions', r2Ids);
+    check('a path that builds nothing has no spread: the deck goes from the overview to the scheme the policy gives', r2Ids === '01_planning_yield,02_low_mid_rise,03_low_mid_rise_shadow_and_separation,04_low_mid_rise_solar_access,05_low_mid_rise_views_from_the_sun,06_controls_and_assumptions', r2Ids);
     check('…and keeps its row in the overview, with no page', /Within the controls<\/td>(?:.(?!<\/tr>))*>—<\/td><\/tr>/.test(r2Deck.slides[0].figureHtml) && /Low and mid-rise housing<\/td>(?:.(?!<\/tr>))*>02<\/td><\/tr>/.test(r2Deck.slides[0].figureHtml));
     const bare = renderYieldDeck({ ...r2, lmrCentre: undefined }, { jobNo: '', client: '', status: '', sheetNo: '', revision: '', checked: '', drawn: '', date: '', preliminary: false }).slides.map((sl) => sl.id).join(',');
     check('…and a site with no path at all is its overview and its controls', bare === '01_planning_yield,02_controls_and_assumptions', bare);
@@ -349,9 +349,10 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const pages = all.slides.map((sl) => sl.id).join(',');
   // Z. 2026-11: "place the compliance sheet right after the scenario page"; "split solar and shadow with setbacks to
   // two different pages"; "shadow will be page two". Each option: its spread, its shadow and separation, its solar access.
-  check('deck: the paths side by side, a spread each with its shadow and its solar access straight after it, the controls last', pages === ['01_planning_yield', '02_stands_today',
-    ...['within_controls', 'reshaped', 'affordable_bonus', 'envelope_to_height'].flatMap((x, i) => [`${String(3 + 3 * i).padStart(2, '0')}_${x}`, `${String(4 + 3 * i).padStart(2, '0')}_${x}_shadow_and_separation`, `${String(5 + 3 * i).padStart(2, '0')}_${x}_solar_access`]),
-    '15_controls_and_assumptions'].join(','), pages);
+  // (and, Z. 2026-11, "please add sun eye views": its views from the sun, the page after its solar access)
+  check('deck: the paths side by side, a spread each with its shadow, its solar access and its views from the sun straight after it, the controls last', pages === ['01_planning_yield', '02_stands_today',
+    ...['within_controls', 'reshaped', 'affordable_bonus', 'envelope_to_height'].flatMap((x, i) => [`${String(3 + 4 * i).padStart(2, '0')}_${x}`, `${String(4 + 4 * i).padStart(2, '0')}_${x}_shadow_and_separation`, `${String(5 + 4 * i).padStart(2, '0')}_${x}_solar_access`, `${String(6 + 4 * i).padStart(2, '0')}_${x}_views_from_the_sun`]),
+    '19_controls_and_assumptions'].join(','), pages);
   check('overview: several lots in one line of the figure, as lot/plan, the rest counted', lotsShort('Lot 1 - DP 965310') === 'Lot 1 - DP 965310' && lotsShort('Lot 1 - DP 965310; Lot 10 - DP 1118472; Lot 1 - DP 36591') === '3 lots: 1/DP965310, 10/DP1118472, 1/DP36591'
     && /^5 lots: .* \+ 3 more$/.test(lotsShort('Lot 1 - DP 965310; Lot 10 - DP 1118472; Lot 1 - DP 36591; Lot 4 - DP 12345; Lot 5 - DP 12345')) && lotsShort(undefined) === '—');
   // Z. 2026-11, on the first page's aerial with every lot tinted and written with its zone, beside a massing in the
@@ -379,15 +380,15 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     check('overview: each lot tinted and written with its zone is still to be had', !/data-zone-edge/.test(old) && (old.match(/R4 · HOB = 18\.6m/g) ?? []).length === 2);
     check('overview: Heron keeps its hatches over the photograph', !/data-zone-edge/.test(first(pictured, 'heron').figureHtml));
   }
-  check('deck: every page an A3 atlas spread', (all.html.match(/<section class="slide atlas"/g) ?? []).length === 15);
+  check('deck: every page an A3 atlas spread', (all.html.match(/<section class="slide atlas"/g) ?? []).length === 19);
   // Several drawings in one document: an id used twice would clip one with another's frame.
   const used = [...all.html.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]);
   const twice = used.filter((v, i) => used.indexOf(v) !== i);
   check('deck: no id is used twice', twice.length === 0, [...new Set(twice)].slice(0, 5).join(', '));
-  check('deck: the kept bulk gets its spread, after what stands and its two pages', deck(tall).slides.slice(1, 5).map((sl) => sl.id).join(',') === '02_stands_today,03_stands_today_shadow_and_separation,04_stands_today_solar_access,05_rebuilt_as_stands', deck(tall).slides.map((sl) => sl.id).join(','));
-  check('deck: fewer paths, fewer pages', deck(openB).slides.length === 11 && deck(sliver).slides.length === 5,
+  check('deck: the kept bulk gets its spread, after what stands and its two pages', deck(tall).slides.slice(1, 6).map((sl) => sl.id).join(',') === '02_stands_today,03_stands_today_shadow_and_separation,04_stands_today_solar_access,05_stands_today_views_from_the_sun,06_rebuilt_as_stands', deck(tall).slides.map((sl) => sl.id).join(','));
+  check('deck: fewer paths, fewer pages', deck(openB).slides.length === 14 && deck(sliver).slides.length === 6,
     `${deck(openB).slides.length}, ${deck(sliver).slides.length}`);
-  check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>12<\/td>/.test(all.html) && /Reshaped to comply<\/td>(?:.(?!<\/tr>))*>06<\/td>/.test(all.html));
+  check('deck: the overview names each path\'s page', /Envelope to the height<\/td>(?:.(?!<\/tr>))*>15<\/td>/.test(all.html) && /Reshaped to comply<\/td>(?:.(?!<\/tr>))*>07<\/td>/.test(all.html));
 
   // ---- sun and shadow at mid winter, on the same lots ----
   const sunRows = yieldRows(bundle, s);
@@ -406,7 +407,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   // What each criterion asks, in full, is a line of small print under its own row on the first option's pages, and on no other's.
   // It was a table of its own under the others ("Assessment criteria"), which ran into the page's key: no such block now.
   const notes = (html: string) => [...html.matchAll(/<tr class="yn"><td colspan="4">([^<]*)<\/td><\/tr>/g)].map((m) => m[1]);
-  const bonusShade = page('10_affordable_bonus_shadow_and_separation'), bonusSolar = page('11_affordable_bonus_solar_access');
+  const bonusShade = page('12_affordable_bonus_shadow_and_separation'), bonusSolar = page('13_affordable_bonus_solar_access');
   check('compliance: two pages an option, titled for it, what the criteria ask written out only on the first option\'s', shade.title === 'Within the controls: shadow' && solar.title === 'Within the controls: solar access'
     && bonusShade.title === 'Affordable bonus: shadow' && bonusSolar.title === 'Affordable bonus: solar access'
     && notes(shade.figureHtml).length >= 2 && notes(solar.figureHtml).length >= 3 && notes(bonusShade.figureHtml).length + notes(bonusSolar.figureHtml).length === 0, `${notes(shade.figureHtml).length} and ${notes(solar.figureHtml).length} on the first, ${notes(bonusShade.figureHtml).length + notes(bonusSolar.figureHtml).length} on the third`);
@@ -417,7 +418,7 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && ['Solar access, 2 h', 'Solar access, none', 'Yield'].every((t) => solar.figureHtml.includes(`<td>${t}</td>`) && !shade.figureHtml.includes(`<td>${t}</td>`))
     && shade.figureHtml.indexOf('Overshadow impact') < shade.figureHtml.indexOf('<td>Building separation</td>') && solar.figureHtml.indexOf('Solar access, 2 h') < solar.figureHtml.indexOf('<td>Yield</td>'));
   check('compliance: yield within the controls is 100% and ticked; filled to the height, over and crossed', /<td>Yield<\/td>(?:.(?!<\/tr>))*100%(?:.(?!<\/tr>))*M0\.6,2\.1/.test(solar.figureHtml)
-    && /<td>Yield<\/td>(?:.(?!<\/tr>))*1\d\d%(?:.(?!<\/tr>))*M1,0\.6/.test(page('14_envelope_to_height_solar_access').figureHtml));
+    && /<td>Yield<\/td>(?:.(?!<\/tr>))*1\d\d%(?:.(?!<\/tr>))*M1,0\.6/.test(page('17_envelope_to_height_solar_access').figureHtml));
   // Z. 2026-11: "the roof shouldn't be counted, coloured like that: we care only for facades, not the roof"
   // Z. 2026-11: "make the roof white". The solar access views' roofs white, as every roof of the scheme now is.
   check('solar access: the roofs white', /<path d="[^"]+" fill="#ffffff" fill-rule="evenodd" stroke="#000000"/.test(solar.figureHtml));
@@ -432,6 +433,22 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
     && !(solar.legend ?? []).some((e) => /laid over the last|Separation:/.test(e.label)));
   check('shadow: the plan the whole page, no massing on it, its key the shadows\'', hasPlan(shade.figureHtml) && !/From the street corner/.test(shade.figureHtml) && /height="297mm"/.test(shade.figureHtml)
     && (shade.legend ?? []).some((e) => /shadows on 21 June, at 9 am, 12 pm and 3 pm/.test(e.label)) && !(shade.legend ?? []).some((e) => /Facades, hours of sun/.test(e.label)));
+  // Z. 2026-11: "please add sun eye views", with a sheet of one: "it should respect the style, but the layout could
+  // be pretty much like this". A page after the solar access: seven views from the sun, each whole hour from 9 to 3,
+  // two across and four down, each named with its hour and where the sun stands; the eighth cell the share of the
+  // facade that has its hours; beside them the facade in sun hour by hour.
+  {
+    const eye = page('06_within_controls_views_from_the_sun');
+    const names = [...eye.figureHtml.matchAll(/<div class="abs maplabel" style="left:([\d.]+)mm;top:([\d.]+)mm">([^<]+)<\/div>/g)].map((x) => ({ left: Number(x[1]), top: Number(x[2]), text: x[3] }));
+    check('sun-eye: seven views, on the hour from 9 to 3, each named with its hour and where the sun stands', names.length === 7 && /^9 am · sun at \d+°, \d+° up$/.test(names[0].text) && /^12 pm · sun at \d+°, \d+° up$/.test(names[3].text) && /^3 pm · /.test(names[6].text), names.map((x) => x.text).join(' | '));
+    check('sun-eye: two across and four down the page', new Set(names.map((x) => x.left)).size === 2 && new Set(names.map((x) => x.top)).size === 4 && names[1].left > names[0].left && names[2].top > names[0].top);
+    check('sun-eye: the eighth cell the share of its facade with its hours', /data-sun-eye-figure="1"[^>]*>(?:.(?!<\/div><\/div>))*>\d+%<\/div><div[^>]*>of its facade has 2 hours of sun or more, 9 am to 3 pm on 21 June\.</.test(eye.figureHtml));
+    check('sun-eye: the facade in sun, hour by hour, in a table of seven', /Its facade in sun, hour by hour/.test(eye.figureHtml) && ['9 am', '10 am', '11 am', '12 pm', '1 pm', '2 pm', '3 pm'].every((w) => eye.figureHtml.includes(`<td>${w}</td>`)));
+    const sunInk = /fill="(#[0-9a-fA-F]{6})"/.exec((eye.legend ?? []).find((e) => /Its facade in sun at that hour/.test(e.label))?.swatch ?? '')?.[1] ?? '';
+    check('sun-eye: a cell in sun in the style\'s sun yellow, keyed; no hours\' bands on it', !!sunInk && eye.figureHtml.includes(`fill="${sunInk}"`) && (eye.legend ?? []).some((e) => /in shadow at that hour/.test(e.label)) && !(eye.legend ?? []).some((e) => /^Facades, hours of sun/.test(e.label)));
+    check('sun-eye: titled for its option, and the solar access page points to it', eye.title === 'Within the controls: from the sun' && /its views from the sun on page 06/.test(solar.sources ?? '') && isTestPage(eye.id, 'sunEye'));
+    check('sun-eye: no plan, no height plane, no tree on it', !hasPlan(eye.figureHtml) && !/HEIGHT OF BUILDING PLANE/.test(eye.figureHtml));
+  }
   check('shadow: the land its shadow falls on, counted', /The shadow it adds/.test(shade.figureHtml) && ['residential lots', 'heritage items', 'parks and reserves'].every((t) => shade.figureHtml.includes(`<td>${t}</td>`)));
   // Z. 2026-11: "make the isometry here for the full half page and remove the plan: the plan is visible in shadow";
   // "keep the rule with full isometry everywhere; if there is nothing interesting for compliance, don't show the
@@ -440,9 +457,9 @@ check('R2 builds no apartments', archetypeFor('R2') === 'none');
   const own = page('03_within_controls');
   check('a path\'s spread: its massing the whole page, its plan on the page after', !hasPlan(own.figureHtml) && /height="297mm"/.test(own.figureHtml) && /Its plan is on page 04, with its shadow and its separations/.test(own.sources ?? ''), (own.sources ?? '').slice(-200));
   check('a path\'s spread: one with nothing to test draws its massing the whole page too, and has no plan anywhere', !hasPlan(page('02_stands_today').figureHtml) && /height="297mm"/.test(page('02_stands_today').figureHtml) && !/Its plan is on page/.test(page('02_stands_today').sources ?? '')
-    && all.slides.filter((sl) => hasPlan(sl.figureHtml)).map((sl) => sl.id).join(',') === ['01_planning_yield', '04_within_controls', '07_reshaped', '10_affordable_bonus', '13_envelope_to_height'].map((x, i) => (i ? `${x}_shadow_and_separation` : x)).join(','),
+    && all.slides.filter((sl) => hasPlan(sl.figureHtml)).map((sl) => sl.id).join(',') === ['01_planning_yield', '04_within_controls', '08_reshaped', '12_affordable_bonus', '16_envelope_to_height'].map((x, i) => (i ? `${x}_shadow_and_separation` : x)).join(','),
     all.slides.filter((sl) => hasPlan(sl.figureHtml)).map((sl) => sl.id).join(','));
-  check('the pages point to each other', /Its apartments' sun is on page 05/.test(shade.sources ?? '') && /Its plan, its shadow and its separations are on page 04/.test(solar.sources ?? '') && /Every assumption is on page 15/.test(shade.sources ?? ''));
+  check('the pages point to each other', /Its apartments' sun is on page 05/.test(shade.sources ?? '') && /Its plan, its shadow and its separations are on page 04/.test(solar.sources ?? '') && /Every assumption is on page 19/.test(shade.sources ?? ''));
   {
     // an office scheme: no apartment's sun to test, but its shadow and its separations are; the yield's criterion goes with them
     const officeDeck = deck({ ...bundle, controls: { ...bundle.controls, zoneCode: 'E2' } }), oIds = officeDeck.slides.map((sl) => sl.id);

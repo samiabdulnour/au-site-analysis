@@ -454,6 +454,41 @@ export function facadeSun(y: YieldResult, o: { context: Block[]; future?: Block[
   return faces;
 }
 
+/** The faces of a scheme at one moment: which of each face's cells has the sun (as `faces` orders them), and the share of its windowed facade, by area, that does. */
+export interface FacadeMoment { sun: Sun; lit: boolean[][]; share: number }
+
+/**
+ * The scheme's faces at each of `clockMins` on the shortest day (the whole hours from 9 to 3 where not given): what a
+ * view from the sun at that moment shows of them. A cell is read as facadeSun reads it, at its middle `sillM` above
+ * its floor, against the neighbours and the scheme's own tiers; a blank wall has no cell to count.
+ */
+export function facadeSunAt(y: YieldResult, faces: FacadeFace[], o: { context: Block[]; lat: number; lon: number; sillM?: number }, clockMins: number[] = ON_THE_HOUR): FacadeMoment[] {
+  const sill = o.sillM ?? 1, z = storeyLevels(y);
+  const own = schemeBlocks(y).map(ready).filter((r): r is Ready => !!r);
+  const today = [...o.context.map(ready).filter((r): r is Ready => !!r), ...own];
+  const all = faces.flatMap((f) => [f.a, f.b]);
+  if (!all.length) return winterSun(o.lat, o.lon, clockMins).map((sun) => ({ sun, lit: [], share: 0 }));
+  const box = { x0: Math.min(...all.map((p) => p.x)), y0: Math.min(...all.map((p) => p.y)), x1: Math.max(...all.map((p) => p.x)), y1: Math.max(...all.map((p) => p.y)) };
+  const FACING = Math.sin((5 * Math.PI) / 180), OFF = 0.05;
+  return winterSun(o.lat, o.lon, clockMins).map((s) => {
+    const now = sunward(today, box, sill, s);
+    let area = 0, sunny = 0;
+    const lit = faces.map((f) => {
+      const facing = !f.blank && s.hx * f.normal.x + s.hy * f.normal.y > FACING;
+      return f.cells.map((c) => {
+        const a = (c.t1 - c.t0) * f.lengthM * (z.top(c.storey) - z.bottom(c.storey));
+        if (!f.blank) area += a;
+        if (!facing) return false;
+        const t = (c.t0 + c.t1) / 2, x = f.a.x + (f.b.x - f.a.x) * t + f.normal.x * OFF, yy = f.a.y + (f.b.y - f.a.y) * t + f.normal.y * OFF;
+        const on = !shaded(now, x, yy, z.bottom(c.storey) + sill, s);
+        if (on) sunny += a;
+        return on;
+      });
+    });
+    return { sun: s, lit, share: area > 0 ? sunny / area : 0 };
+  });
+}
+
 /** A piece of a tier's roof, about `cellM` square, clipped to the roof the tiers above leave open, and its hours of sun. */
 export interface RoofCell { tier: number; pts: XY[]; areaSqm: number; hours: number; hoursFuture?: number }
 

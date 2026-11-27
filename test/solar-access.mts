@@ -8,7 +8,7 @@
  *   npx tsx test/solar-access.mts
  */
 
-import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, addedGround, schemeBlocks, facadeSun, roofSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
+import { winterSun, inSun, adgSunHours, apartmentSun, addedShadow, addedGround, schemeBlocks, facadeSun, facadeSunAt, roofSun, QUARTER_HOURS, ON_THE_HOUR, type Block } from '../src/lib/solarAccess.js';
 import { computeYield, ringArea, edgeKinds, type XY } from '../src/lib/yield.js';
 
 const failures: string[] = [];
@@ -124,6 +124,16 @@ const SYD = { lat: -33.87, lon: 151.21 };
   const north = shadedFaces.find((f) => Math.abs(((f.bearing + 540) % 360) - 180) < 10)!;
   const byStorey = (st: number) => north.cells.filter((c) => c.storey === st).reduce((t, c) => t + c.hours, 0);
   check('faces: a tower to the north shades the lower storeys more', byStorey(1) < byStorey(4), `${byStorey(1)} vs ${byStorey(4)}`);
+  // the faces at each whole hour, as a view from the sun shows them: at noon the north face in sun and the south not;
+  // the share of the windowed facade in sun between none and all of it; a tower to the north takes some of it
+  const moments = facadeSunAt(y, faces, { context: [], ...SYD });
+  const noon = moments[3], iN = faces.indexOf(facing(0)[0]), iS = faces.indexOf(facing(180)[0]), iE = faces.indexOf(facing(90)[0]);
+  check('moments: seven, on the hour from 9 to 3', moments.length === 7 && moments[0].sun.clockMin === 9 * 60 && moments[6].sun.clockMin === 15 * 60);
+  check('moments: at noon the north face in sun, the south in shadow', noon.lit[iN].every(Boolean) && noon.lit[iS].every((v) => !v));
+  check('moments: the east face has the 9 am sun and not the 3 pm', moments[0].lit[iE].every(Boolean) && moments[6].lit[iE].every((v) => !v));
+  check('moments: the share of the facade in sun is a part of it', moments.every((m) => m.share > 0 && m.share < 1), moments.map((m) => m.share.toFixed(2)).join(' '));
+  const shadedNoon = facadeSunAt(y, shadedFaces, { context: [{ rings: [rect(0, 32, 60, 40)], z0: 0, z1: 12 }], ...SYD })[3];
+  check('moments: a tower to the north takes some of the noon sun', shadedNoon.share < noon.share, `${shadedNoon.share} vs ${noon.share}`);
 }
 
 // ---- the sun on the roofs ---------------------------------------------------------------------
